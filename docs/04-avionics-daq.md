@@ -224,11 +224,80 @@ we control, means we will know how to read it later, on a signal that matters.
 
 ---
 
+## Part 2c · Phase 2 — Trust, but verify: characterizing and calibrating the ADC
+
+We now know *how often* to sample and *how* to time it. But there is one more
+question: **how much can we trust the number each snapshot gives us?**
+
+### What "calibration" means
+
+Every measuring instrument lies a little. A ruler printed slightly wrong, a scale
+that reads 2 g heavy — and an ADC whose readings drift from the truth, especially
+near its voltage limits. **Calibration** is the act of measuring *how* an
+instrument lies, so you can correct it. You compare its readings against a known
+reference and build a correction. No serious measurement is trusted until the
+instrument behind it is calibrated.
+
+### The experiment
+
+We sweep the DAC across its whole range (0 → 3.3 V) as a known test input, and at
+each voltage read the ADC two ways:
+
+- **raw** — `analogRead()` converted naively (count / 4095 × 3.3 V), what a
+  beginner would write;
+- **factory-calibrated** — `analogReadMilliVolts()`, which applies the
+  per-chip calibration burned into the ESP32 at the factory.
+
+We then fit **our own** correction (a cubic curve) to this specific chip and
+compare all three against the input.
+
+**Code:** [`adc_cal/main.cpp`](../avionics/daq-fase1/adc_cal/main.cpp)
+· analysis: [`adc_cal.py`](../avionics/daq-fase1/adc_cal.py)
+
+### The result
+
+![adc calibration](../images/daq/adc_calibration.png)
+
+**Left — the transfer curve.** The ideal would be a perfect diagonal (what goes
+in equals what is read). The raw ADC (blue) sags below it and bends at the ends;
+the factory calibration (orange) pulls it closer.
+
+**Right — the error of each method** across the working range:
+
+| Conversion | Max error |
+|------------|-----------|
+| Naive raw `count/4095×3.3` | **159 mV** |
+| ESP32 factory calibration | 103 mV |
+| **Our own cubic calibration** | **38 mV** |
+
+The raw ADC is off by up to **159 mV** — that would be a large, invisible error in
+a pressure reading. The factory calibration cuts it to ~103 mV; a **custom
+calibration fit to this exact chip** cuts it to ~38 mV. This is the whole point:
+you characterize *your* instrument and build *your* correction.
+
+We also measured the **noise floor** — the spread of repeated reads at a fixed
+input: ~17 counts (~14 mV). That sets a hard limit on the finest change the raw
+ADC can resolve, and motivates both averaging and the external ADC of a later
+phase.
+
+> Honest caveat: the DAC used as the reference is itself imperfect, so these
+> numbers characterize the DAC→ADC *loopback*, not the ADC in isolation. A
+> production calibration uses an external precision voltage reference. The
+> *method* — sweep, compare to a reference, fit a correction, quantify the
+> residual — is exactly the same, and it is the transferable skill.
+
+### Why this matters for the rocket
+
+When the DAQ finally records chamber pressure, an uncalibrated 159 mV error could
+mean reading 3.2 MPa as 3.4 MPa — the difference between "nominal" and "over the
+limit." **Calibration is what turns a voltage into a trustworthy measurement.**
+Before the real sensor is ever connected, its whole chain (sensor → amplifier →
+ADC) will be calibrated against known weights and pressures the same way.
+
+---
+
 ## What was also measured along the way
 
-- **ADC nonlinearity:** a DAC output of 2.59 V read back as 2.44 V (~0.15 V
-  error). The ESP32's built-in ADC is not accurate near its voltage limits — the
-  concrete reason the next phase adds an external, higher-quality ADC.
 - **A real hardware bug:** the first captures read all-zero. The cause was an
   intermittent jumper wire on the header pins — *not* the code. A constant-voltage
   continuity test isolated it. **When bench hardware misbehaves, suspect the
@@ -262,4 +331,6 @@ anything built on top of them.
 | `plot.py` | Plots one capture in the time domain |
 | `fft_analysis.py` | Plots a capture in both time and frequency domains |
 | `jitter_analysis.py` | Measures the timing jitter of a sampling method |
+| `adc_cal/main.cpp` | Phase 2c firmware: DAC sweep for ADC characterization |
+| `adc_cal.py` | Characterizes and calibrates the ADC transfer curve |
 | `platformio.ini` | Build configuration (board `esp32dev`, Arduino framework) |
