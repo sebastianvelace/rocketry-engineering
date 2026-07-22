@@ -361,6 +361,72 @@ stand, the same pipeline will turn its thrust into a number we can believe.
 
 ---
 
+## Part 3 · Phase 3 — An analog anti-aliasing filter, and a hard lesson in measurement rigor
+
+Aliasing (Part 1) **cannot be undone in software** — once a fast signal has
+disguised itself as a slow one, the samples are indistinguishable. The only real
+cure is to remove the high frequencies **physically, before the ADC**, with an
+analog filter. The simplest is a first-order **RC low-pass**: a resistor in
+series and a capacitor to ground.
+
+```
+  GPIO25 --[ R = 220 ohm ]--+--> GPIO34
+   (DAC)                     |    (ADC)
+                          [ C = 10 uF ]
+                             |
+                            GND
+```
+
+Design cutoff: `fc = 1/(2*pi*R*C) ~= 72 Hz`.
+
+### How this section earned its title
+
+The first attempt to characterize the filter swept the signal frequency and
+measured the surviving amplitude at each. It reported a cutoff of **4.6 Hz** —
+more than ten times too low. Taken at face value, this implied ~3.4 kΩ of series
+resistance that shouldn't exist, and led to an elaborate (and **wrong**)
+conclusion that the ESP32 DAC was a "weak source" with kΩ output impedance.
+
+Two things exposed the error:
+
+1. **An independent measurement method.** Instead of sweeping frequency, a
+   **step-response** measurement charges the capacitor through the resistor and
+   times it: the time to reach 63 % of the final value is the RC time constant
+   `tau`, and `R = tau / C`. This is immune to the flaw in the sweep. It gave a
+   clean textbook charging curve:
+
+   ![RC step response](../images/daq/step.png)
+
+   `tau = 3.4 ms`, and with `C = 10 uF` that gives **R ~= 220-340 Ω** — the
+   resistor was 220 Ω all along, and the real cutoff is ~47 Hz, close to design.
+
+2. **The vendor documentation.** The ESP32 DAC's real output resistance is
+   ~20 Ω (it sources ~12 mA) — *not* kΩ. The measured contradiction was the tell.
+
+### The root cause of the wrong number
+
+The frequency-sweep firmware sampled the ADC at a limited rate while measuring
+each tone's peak-to-peak amplitude. At higher frequencies there were **too few
+samples per cycle**, so the min/max **missed the true peaks** and reported a
+falsely low amplitude — a fake rolloff that faked a low cutoff. A classic
+**measurement artifact** masquerading as physics.
+
+**Code:** frequency sweep (with the pitfall) `rc_filter/main.cpp`; the reliable
+step-response `step_test/main.cpp` and [`step_analysis.py`](../avionics/daq-fase1/step_analysis.py).
+
+### The lesson (the most important one in this project)
+
+A subtle measurement bug produced a confident, detailed, completely wrong
+conclusion. What corrected it was **a second independent method and a check
+against the datasheet** — not more thinking about the first result. One
+measurement is a hypothesis; agreement across methods is a fact. This principle
+is now the first entry in the project's [CLAUDE.md](../CLAUDE.md).
+
+The filter itself works exactly as designed — cutoff ~47-72 Hz, passing low
+frequencies and attenuating the high ones that would otherwise alias.
+
+---
+
 ## What was also measured along the way
 
 - **A real hardware bug:** the first captures read all-zero. The cause was an
@@ -377,7 +443,7 @@ Phase 1   sampling rate · Nyquist · aliasing                    ✅
 Phase 2a  deterministic timing (hardware-timer interrupts)      ✅
 Phase 2b  the frequency domain (FFT)                            ✅
 Phase 2c  ADC characterization & calibration curve             (next, ESP32 only)
-Phase 3   analog anti-aliasing RC filter + measure its response (1 resistor, 1 cap)
+Phase 3   analog anti-aliasing RC filter (measured via step-response)   ✅
 Phase 4   full dry-run: play a real thrust curve, sample, integrate impulse   ✅
 Phase 5   load cell (Wheatstone bridge) → instrumentation amp → real thrust
 Phase 6   flight computer: IMU + barometer sensor fusion (Kalman filter)
