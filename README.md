@@ -31,7 +31,7 @@ change one variable at a time.**
 | **Motor** | 25.4 mm minimum-diameter KNSB (potassium nitrate / sorbitol) BATES-grain motor, F-class, designed from a headless internal-ballistics sweep |
 | **Key safety finding** | A Kn in the "safe" 200–280 range is **not** sufficient — 120 Kn-valid configurations all violated port/throat or mass-flux limits. All four limits must hold simultaneously |
 | **Airframe** | The aluminium motor tube *is* the airframe (true minimum diameter). Optimized in OpenRocket: **+64 % apogee** from fin-profile and finish alone — the nose shape was irrelevant at Mach 0.77 |
-| **Avionics** | Custom ESP32 data-acquisition system; live demonstration of the Nyquist–Shannon theorem and aliasing |
+| **Avionics** | Custom ESP32 data-acquisition system: live Nyquist/aliasing demonstration, frequency-domain (FFT) analysis, and interrupt-driven sampling measured at **0 µs jitter vs. 233 µs** for naive polling |
 | **Open source** | Diagnosed, fixed, validated and submitted a bug fix to [OpenRocket](https://github.com/openrocket/openrocket) ([issue #3183](https://github.com/openrocket/openrocket/issues/3183), PR #3186) |
 
 ---
