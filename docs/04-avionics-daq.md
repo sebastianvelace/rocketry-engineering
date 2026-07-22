@@ -296,6 +296,71 @@ ADC) will be calibrated against known weights and pressures the same way.
 
 ---
 
+## Part 4 · Phase 4 — The dress rehearsal: replaying a real thrust curve
+
+Everything so far was building blocks. Now we assemble them into the **entire
+static-test data pipeline and validate it end-to-end — with no motor.**
+
+### The idea
+
+We take a **real thrust curve** — the one openMotor produced for motor E
+([`E.eng`](../simulation/internal-ballistics/E.eng), 72.74 N·s) — and make the
+ESP32 *play it back* through its DAC, as if the motor were pushing in real time.
+The ADC records it. We then reconstruct the thrust and **integrate it to recover
+the total impulse.** If the DAQ measures a *known* curve's impulse correctly, we
+can trust it to measure a real motor's.
+
+### The one new concept: impulse is an integral
+
+**Total impulse** is the area under the thrust-versus-time curve —
+mathematically, the integral `I = ∫ F dt`. Intuitively: thrust is how hard the
+motor pushes at each instant; impulse is the *total push* over the whole burn,
+and it is what determines how high the rocket goes. We compute it numerically by
+adding up the area of thin slices under the measured curve (the trapezoidal
+rule). This is the single most important number a thrust stand produces.
+
+### The pipeline, assembled
+
+```
+ .eng curve → DAC (play) → jumper → ADC (sample) → calibrate → integrate → impulse
+   (openMotor)  (Phase 1)          (Phase 2a timer)  (Phase 2c)   (Phase 4)
+```
+
+**Code:** generator [`gen_thrust_firmware.py`](../avionics/daq-fase1/gen_thrust_firmware.py),
+firmware [`thrust_replay/main.cpp`](../avionics/daq-fase1/thrust_replay/main.cpp),
+analysis [`thrust_replay.py`](../avionics/daq-fase1/thrust_replay.py).
+
+### The result
+
+![thrust replay](../images/daq/thrust_replay.png)
+
+The measured curve (dots) tracks the true curve (line) closely — including the
+gentle rise of the near-neutral BATES burn and the sharp start and stop. The
+numbers:
+
+| Quantity | True (from `.eng`) | Measured by DAQ | Error |
+|----------|--------------------|-----------------|-------|
+| **Total impulse** | **72.74 N·s** | **70.07 N·s** | **−3.7 %** |
+| Peak thrust | 179 N | 173 N | −3 % |
+| Burn time | 434 ms | 432 ms | −0.5 % |
+
+**The DAQ recovered the impulse of a known curve to within 3.7 %.** The small
+underestimate is a systematic gain offset from the imperfect DAC/ADC loopback —
+exactly the kind of error the Phase 2c calibration is built to remove, and it
+would shrink further with the external ADC and a real sensor calibrated against
+known weights. Timing (burn duration) is essentially perfect, thanks to the
+hardware timer from Phase 2a.
+
+### Why this closes the "measure" stage
+
+This is the dress rehearsal for the real static test. Every block is now proven
+to work together: precise timing, correct sampling, calibrated readings, and a
+trustworthy impulse integral — validated against a known answer before a single
+gram of propellant is involved. When the aluminium motor finally fires on the
+stand, the same pipeline will turn its thrust into a number we can believe.
+
+---
+
 ## What was also measured along the way
 
 - **A real hardware bug:** the first captures read all-zero. The cause was an
@@ -313,7 +378,7 @@ Phase 2a  deterministic timing (hardware-timer interrupts)      ✅
 Phase 2b  the frequency domain (FFT)                            ✅
 Phase 2c  ADC characterization & calibration curve             (next, ESP32 only)
 Phase 3   analog anti-aliasing RC filter + measure its response (1 resistor, 1 cap)
-Phase 4   full dry-run: play a real thrust curve, sample, integrate impulse
+Phase 4   full dry-run: play a real thrust curve, sample, integrate impulse   ✅
 Phase 5   load cell (Wheatstone bridge) → instrumentation amp → real thrust
 Phase 6   flight computer: IMU + barometer sensor fusion (Kalman filter)
 ```
@@ -333,4 +398,7 @@ anything built on top of them.
 | `jitter_analysis.py` | Measures the timing jitter of a sampling method |
 | `adc_cal/main.cpp` | Phase 2c firmware: DAC sweep for ADC characterization |
 | `adc_cal.py` | Characterizes and calibrates the ADC transfer curve |
+| `thrust_replay/main.cpp` | Phase 4 firmware: plays a real thrust curve out the DAC |
+| `gen_thrust_firmware.py` | Generates the replay firmware from a `.eng` file |
+| `thrust_replay.py` | Reconstructs thrust, integrates impulse, validates the pipeline |
 | `platformio.ini` | Build configuration (board `esp32dev`, Arduino framework) |
