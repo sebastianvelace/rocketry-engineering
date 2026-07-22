@@ -1,0 +1,150 @@
+<?xml version='1.0' encoding='utf-8'?>
+<openrocket version="1.10" creator="OpenRocket 24.12">
+  <rocket>
+    <name>Tumble abort repro - stable 3FNC</name>
+    <id>67df5435-7120-40eb-a0d9-acb563c505a0</id>
+    <axialoffset method="absolute">0.0</axialoffset>
+    <position type="absolute">0.0</position>
+    <designtype>original</designtype>
+    <motorconfiguration configid="54e0c270-968f-46f3-90da-3d201d58d497" default="true">
+      <stage number="0" active="true"/>
+    </motorconfiguration>
+    <referencetype>maximum</referencetype>
+
+    <subcomponents>
+      <stage>
+        <name>Stage</name>
+        <id>695793b1-eebb-4f65-814d-45889009e33e</id>
+
+        <subcomponents>
+          <nosecone>
+            <name>Nose cone</name>
+            <id>b8624a33-babc-4539-abf1-b4ebbeef2195</id>
+            <finish>normal</finish>
+            <material type="bulk" density="170.0" group="Other">Balsa</material>
+            <length>0.1</length>
+            <thickness>0.003</thickness>
+            <shape>ogive</shape>
+            <shapeparameter>1.0</shapeparameter>
+            <aftradius>0.0125</aftradius>
+            <aftshoulderradius>0.0</aftshoulderradius>
+            <aftshoulderlength>0.0</aftshoulderlength>
+            <aftshoulderthickness>0.0</aftshoulderthickness>
+            <aftshouldercapped>false</aftshouldercapped>
+            <isflipped>false</isflipped>
+          </nosecone>
+
+          <bodytube>
+            <name>Body tube</name>
+            <id>ac9ae43f-53e0-4266-b4c2-e9ce0d5580a4</id>
+            <finish>normal</finish>
+            <material type="bulk" density="680.0" group="Other">Cardboard</material>
+            <length>0.45</length>
+            <thickness>5.0E-4</thickness>
+            <radius>0.0125</radius>
+            <motormount>
+              <ignitionevent>automatic</ignitionevent>
+              <ignitiondelay>0.0</ignitiondelay>
+              <overhang>0.0</overhang>
+              <motor configid="54e0c270-968f-46f3-90da-3d201d58d497">
+                <manufacturer>AeroTech</manufacturer>
+                <digest>0c78169db8c70d4d9660f57e3280cda2</digest>
+                <designation>E15</designation>
+                <diameter>0.024</diameter>
+                <length>0.07</length>
+                <delay>0.0</delay>
+              </motor>
+              <ignitionconfiguration configid="54e0c270-968f-46f3-90da-3d201d58d497">
+                <ignitionevent>automatic</ignitionevent>
+                <ignitiondelay>0.0</ignitiondelay>
+              </ignitionconfiguration>
+            </motormount>
+
+            <subcomponents>
+              <trapezoidfinset>
+                <name>Fins</name>
+                <id>e3305ced-a821-4be5-9c6f-0364b0f6b9dc</id>
+                <instancecount>3</instancecount>
+                <fincount>3</fincount>
+                <radiusoffset method="surface">0.0</radiusoffset>
+                <angleoffset method="relative">0.0</angleoffset>
+                <rotation>0.0</rotation>
+                <axialoffset method="bottom">0.0</axialoffset>
+                <position type="bottom">0.0</position>
+                <finish>normal</finish>
+                <material type="bulk" density="170.0" group="Other">Balsa</material>
+                <thickness>0.003</thickness>
+                <crosssection>square</crosssection>
+                <cant>0.0</cant>
+                <filletradius>0.0</filletradius>
+                <filletmaterial type="bulk" density="680.0" group="PaperProducts">Cardboard</filletmaterial>
+                <rootchord>0.07</rootchord>
+                <tipchord>0.03</tipchord>
+                <sweeplength>0.03</sweeplength>
+                <height>0.045</height>
+              </trapezoidfinset>
+
+              <parachute>
+                <name>Parachute</name>
+                <id>2ed910db-1e64-44aa-878f-292cc09f49d6</id>
+                <axialoffset method="top">0.02</axialoffset>
+                <position type="top">0.02</position>
+                <packedlength>0.025</packedlength>
+                <packedradius>0.0125</packedradius>
+                <radialposition>0.0</radialposition>
+                <radialdirection>0.0</radialdirection>
+                <cd>auto</cd>
+                <material type="surface" density="0.067" group="Fabrics">Ripstop nylon</material>
+                <deployevent>apogee</deployevent>
+                <deployaltitude>200.0</deployaltitude>
+                <deploydelay>0.0</deploydelay>
+                <diameter>0.35</diameter>
+                <linecount>6</linecount>
+                <linelength>0.5</linelength>
+                <linematerial type="line" density="0.0018" group="ThreadsLines">Elastic cord (round 2 mm, 1/16 in)</linematerial>
+              </parachute>
+            </subcomponents>
+          </bodytube>
+        </subcomponents>
+      </stage>
+    </subcomponents>
+  </rocket>
+
+  <simulations>
+    <simulation status="notsimulated">
+      <name>9 m/s wind - aborts</name>
+      <simulator>RK4Simulator</simulator>
+      <calculator>BarrowmanCalculator</calculator>
+      <conditions>
+        <configid>54e0c270-968f-46f3-90da-3d201d58d497</configid>
+        <launchrodlength>1.0</launchrodlength>
+        <launchintowind>true</launchintowind>
+        <launchrodangle>0.0</launchrodangle>
+        <launchroddirection>90.0</launchroddirection>
+        <windaverage>9.0</windaverage>
+        <windturbulence>0.1</windturbulence>
+        <winddirection>1.5707963267948966</winddirection>
+        <wind model="average">
+          <speed>9.0</speed>
+          <direction>1.5707963267948966</direction>
+          <standarddeviation>0.9</standarddeviation>
+        </wind>
+        <wind model="multilevel" altituderef="msl">
+          <windlevel altitude="0.0" speed="2.0" direction="1.5707963267948966" standarddeviation="0.2"/>
+        </wind>
+        <windmodeltype>Average</windmodeltype>
+        <launchaltitude>0.0</launchaltitude>
+        <launchlatitude>28.61</launchlatitude>
+        <launchlongitude>-80.6</launchlongitude>
+        <geodeticmethod>spherical</geodeticmethod>
+        <atmosphere model="isa"/>
+        <timestep>0.05</timestep>
+        <maxtime>1200.0</maxtime>
+      </conditions>
+    </simulation>
+  </simulations>
+  <photostudio>
+  </photostudio>
+  <docprefs>
+  </docprefs>
+</openrocket>
