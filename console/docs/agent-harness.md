@@ -1,6 +1,6 @@
 # Agent harness feasibility
 
-## Decision
+## Original bridge decision
 
 Keep the terminal as the execution and approval surface. Use Rocketry Console
 as a read-only observation and results surface.
@@ -38,7 +38,12 @@ frameless communication:
 
 ## Next stage
 
-A full client should:
+The bidirectional desktop client is now approved and its provider feasibility
+has been verified. The bridge remains a fallback until that client reaches
+parity. See [the agent workstation implementation plan](agent-workstation-plan.md)
+for the tested transports, security boundary and migration phases.
+
+A full client will:
 
 1. launch one authenticated local app-server process;
 2. map threads and turns to an explicit session model;

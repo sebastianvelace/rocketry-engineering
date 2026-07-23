@@ -86,6 +86,30 @@ bounded, ignored JSONL file. Only the Agent page polls it, using a two-second
 Streamlit fragment; the simulation and measurement pages do not rerun. The
 browser cannot execute commands or approve agent actions.
 
+### Provider feasibility probes
+
+Inspect the installed providers, subscription authentication and the local
+Codex app-server handshake without submitting a prompt:
+
+```bash
+.venv/bin/python tools/provider_probe.py
+```
+
+Minimal live probes are deliberately separate because they consume provider
+quota and create resumable test sessions:
+
+```bash
+.venv/bin/python tools/provider_live_probe.py \
+  --provider codex --allow-token-use
+
+.venv/bin/python tools/provider_live_probe.py \
+  --provider claude --allow-token-use --persistent
+```
+
+They disable Claude tools and use a read-only Codex thread. They are not run by
+CI. See the [desktop agent workstation plan](docs/agent-workstation-plan.md)
+for verified capabilities, remaining risks and implementation phases.
+
 ## Data
 
 Runs are stored in `runs.db`, which is intentionally ignored by Git. Each
@@ -113,3 +137,4 @@ explicit confirmation in the interface.
 
 - [Technical audit](docs/technical-audit-2026-07-23.md)
 - [Frontend and UX system](docs/frontend-redesign.md)
+- [Desktop agent workstation plan](docs/agent-workstation-plan.md)
