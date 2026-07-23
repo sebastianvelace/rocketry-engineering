@@ -1,0 +1,169 @@
+import asyncio
+import tempfile
+import unittest
+from pathlib import Path
+
+from gateway.manager import SessionManager
+from gateway.providers.base import ProviderApproval, ProviderEvent
+from gateway.store import GatewayStore
+
+
+class FakeAdapter:
+    def __init__(
+        self,
+        *,
+        provider,
+        workspace,
+        event_sink,
+        provider_session_id=None,
+    ):
+        self.provider = provider
+        self.workspace = workspace
+        self.event_sink = event_sink
+        self.provider_session_id = provider_session_id or f"{provider}-session"
+        self.prompts = []
+        self.interrupted = False
+        self.closed = False
+        self.approvals = []
+
+    async def start(self):
+        return self.provider_session_id
+
+    async def send_turn(self, prompt):
+        self.prompts.append(prompt)
+        return "turn-1"
+
+    async def interrupt(self):
+        self.interrupted = True
+
+    async def resolve_approval(self, request_id, *, approved, for_session):
+        self.approvals.append((request_id, approved, for_session))
+
+    async def close(self):
+        self.closed = True
+
+
+class SessionManagerTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.store = GatewayStore(self.root / "gateway.db")
+        self.adapters = []
+
+        def factory(**kwargs):
+            adapter = FakeAdapter(**kwargs)
+            self.adapters.append(adapter)
+            return adapter
+
+        self.manager = SessionManager(
+            self.store,
+            allowed_workspaces=[self.root],
+            adapter_factory=factory,
+            queue_size=2,
+        )
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_message_starts_provider_and_persists_visible_events(self):
+        async def exercise():
+            session = await self.manager.create_session(
+                provider="codex",
+                workspace=str(self.root),
+                title="Test",
+            )
+            queue = self.manager.subscribe(session.id)
+            submitted = await self.manager.send_message(session.id, "Run tests")
+            return session, queue, submitted
+
+        session, queue, submitted = asyncio.run(exercise())
+        loaded = self.store.get_session(session.id)
+        events = self.store.list_events(session.id)
+
+        self.assertEqual(loaded.provider_session_id, "codex-session")
+        self.assertEqual(loaded.status, "running")
+        self.assertEqual(self.adapters[0].prompts, ["Run tests"])
+        self.assertEqual(submitted.text, "Turn submitted")
+        self.assertIn("Run tests", [event.text for event in events])
+        self.assertEqual(queue.qsize(), 2)
+
+    def test_provider_completion_returns_session_to_ready(self):
+        async def exercise():
+            session = await self.manager.create_session(
+                provider="claude",
+                workspace=str(self.root),
+            )
+            await self.manager.send_message(session.id, "Inspect")
+            await self.adapters[0].event_sink(
+                ProviderEvent("assistant_message", "Done", role="assistant")
+            )
+            await self.adapters[0].event_sink(
+                ProviderEvent("session", "Turn completed")
+            )
+            return session.id
+
+        session_id = asyncio.run(exercise())
+        self.assertEqual(self.store.get_session(session_id).status, "ready")
+        self.assertEqual(
+            [event.text for event in self.store.list_events(session_id)][-2:],
+            ["Done", "Turn completed"],
+        )
+
+    def test_native_approval_round_trip_reaches_adapter(self):
+        async def exercise():
+            session = await self.manager.create_session(
+                provider="codex",
+                workspace=str(self.root),
+            )
+            await self.manager.send_message(session.id, "Fetch")
+            await self.manager._handle_provider_approval(
+                session.id,
+                ProviderApproval(
+                    request_id=81,
+                    action="item/commandExecution/requestApproval",
+                    details={"command": "git fetch"},
+                ),
+            )
+            pending = self.store.list_pending_approvals(session.id)
+            resolved = await self.manager.resolve_approval(
+                pending[0].id,
+                approved=True,
+                for_session=True,
+            )
+            return session.id, resolved
+
+        session_id, resolved = asyncio.run(exercise())
+        self.assertEqual(resolved.status, "approved")
+        self.assertEqual(self.adapters[0].approvals, [(81, True, True)])
+        self.assertEqual(self.store.get_session(session_id).status, "running")
+
+    def test_interrupt_updates_provider_and_durable_status(self):
+        async def exercise():
+            session = await self.manager.create_session(
+                provider="claude",
+                workspace=str(self.root),
+            )
+            await asyncio.wait_for(
+                self.manager.send_message(session.id, "Long task"),
+                timeout=2,
+            )
+            await asyncio.wait_for(self.manager.interrupt(session.id), timeout=2)
+            return session.id
+
+        session_id = asyncio.run(exercise())
+        self.assertTrue(self.adapters[0].interrupted)
+        self.assertEqual(self.store.get_session(session_id).status, "interrupted")
+
+    def test_workspace_must_be_inside_allowed_root(self):
+        async def exercise():
+            await self.manager.create_session(
+                provider="codex",
+                workspace="/",
+            )
+
+        with self.assertRaisesRegex(ValueError, "outside"):
+            asyncio.run(exercise())
+
+
+if __name__ == "__main__":
+    unittest.main()

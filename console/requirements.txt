@@ -6,3 +6,6 @@ schemdraw>=0.23,<1
 numpy>=2.5,<3
 websockets>=16,<17
 mcp>=1.28,<2
+starlette>=0.47,<2
+uvicorn>=0.31,<1
+claude-agent-sdk>=0.1,<1

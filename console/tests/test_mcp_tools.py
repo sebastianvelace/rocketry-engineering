@@ -32,8 +32,10 @@ class ArtifactAndLockTests(unittest.TestCase):
                 metadata={"run_id": 4},
             )
             loaded = artifact_store.get(saved.id)
+            listed = artifact_store.list()
 
             self.assertEqual(loaded, saved)
+            self.assertEqual(listed, [saved])
             self.assertEqual(Path(saved.path).read_text(encoding="utf-8"), "evidence")
             self.assertIsNone(artifact_store.get("../escape"))
 

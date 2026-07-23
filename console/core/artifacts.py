@@ -75,3 +75,29 @@ class ArtifactStore:
             return Artifact(**json.loads(manifest_path.read_text(encoding="utf-8")))
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             return None
+
+    def list(self, *, limit: int = 100) -> list[Artifact]:
+        if limit < 1 or limit > 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        if not self.root.is_dir():
+            return []
+        artifacts = []
+        manifests = sorted(
+            self.root.glob("*.meta.json"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        for manifest_path in manifests:
+            try:
+                artifact = Artifact(
+                    **json.loads(manifest_path.read_text(encoding="utf-8"))
+                )
+                data_path = Path(artifact.path).resolve()
+                if self.root.resolve() not in data_path.parents or not data_path.is_file():
+                    continue
+                artifacts.append(artifact)
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if len(artifacts) >= limit:
+                break
+        return artifacts
