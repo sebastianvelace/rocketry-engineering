@@ -1,0 +1,158 @@
+import { invoke } from "@tauri-apps/api/core";
+import type {
+  AgentEvent,
+  Approval,
+  Artifact,
+  EngineeringStatus,
+  GatewayConnection,
+  Provider,
+  RunRecord,
+  RunSummary,
+  Session,
+} from "./types";
+
+function runningInTauri(): boolean {
+  return "__TAURI_INTERNALS__" in window;
+}
+
+export async function connectGateway(): Promise<GatewayConnection> {
+  if (runningInTauri()) {
+    return invoke<GatewayConnection>("start_gateway");
+  }
+  return {
+    baseUrl: import.meta.env.VITE_GATEWAY_URL || "http://127.0.0.1:8765",
+    token: import.meta.env.VITE_GATEWAY_TOKEN || "development-token",
+    workspace: import.meta.env.VITE_WORKSPACE || "..",
+  };
+}
+
+export class GatewayApi {
+  constructor(readonly connection: GatewayConnection) {}
+
+  private async request<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(`${this.connection.baseUrl}${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${this.connection.token}`,
+        "Content-Type": "application/json",
+        ...init?.headers,
+      },
+    });
+    const payload = await response.json();
+    if (!response.ok || payload.ok === false) {
+      throw new Error(payload.error?.message || `Gateway request failed (${response.status})`);
+    }
+    return payload as T;
+  }
+
+  async sessions(): Promise<Session[]> {
+    return (await this.request<{ sessions: Session[] }>("/api/sessions")).sessions;
+  }
+
+  async createSession(provider: Provider, title: string): Promise<Session> {
+    const payload = await this.request<{ session: Session }>("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({
+        provider,
+        title,
+        workspace: this.connection.workspace,
+      }),
+    });
+    return payload.session;
+  }
+
+  async events(sessionId: string, after = 0): Promise<AgentEvent[]> {
+    return (
+      await this.request<{ events: AgentEvent[] }>(
+        `/api/sessions/${sessionId}/events?after=${after}&limit=2000`,
+      )
+    ).events;
+  }
+
+  async send(sessionId: string, text: string): Promise<void> {
+    await this.request(`/api/sessions/${sessionId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  }
+
+  async interrupt(sessionId: string): Promise<void> {
+    await this.request(`/api/sessions/${sessionId}/interrupt`, {
+      method: "POST",
+    });
+  }
+
+  async approvals(sessionId: string): Promise<Approval[]> {
+    return (
+      await this.request<{ approvals: Approval[] }>(
+        `/api/sessions/${sessionId}/approvals`,
+      )
+    ).approvals;
+  }
+
+  async resolveApproval(
+    approvalId: string,
+    approved: boolean,
+    forSession = false,
+  ): Promise<void> {
+    await this.request(`/api/approvals/${approvalId}`, {
+      method: "POST",
+      body: JSON.stringify({ approved, for_session: forSession }),
+    });
+  }
+
+  async status(): Promise<EngineeringStatus> {
+    return this.request<EngineeringStatus>("/api/status");
+  }
+
+  async runs(): Promise<RunSummary[]> {
+    return (await this.request<{ runs: RunSummary[] }>("/api/runs")).runs;
+  }
+
+  async run(id: number): Promise<RunRecord> {
+    return (await this.request<{ run: RunRecord }>(`/api/runs/${id}`)).run;
+  }
+
+  async artifacts(): Promise<Artifact[]> {
+    return (await this.request<{ artifacts: Artifact[] }>("/api/artifacts")).artifacts;
+  }
+
+  artifactUrl(artifact: Artifact): string {
+    return `${this.connection.baseUrl}${artifact.download_url}`;
+  }
+
+  async openArtifact(artifact: Artifact): Promise<void> {
+    const response = await fetch(this.artifactUrl(artifact), {
+      headers: { Authorization: `Bearer ${this.connection.token}` },
+    });
+    if (!response.ok) {
+      throw new Error(`Artifact download failed (${response.status})`);
+    }
+    const objectUrl = URL.createObjectURL(await response.blob());
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = artifact.path.split("/").at(-1) || artifact.id;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  }
+
+  subscribe(
+    sessionId: string,
+    after: number,
+    onEvent: (event: AgentEvent) => void,
+    onState: (connected: boolean) => void,
+  ): () => void {
+    const url = new URL(this.connection.baseUrl);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.pathname = `/ws/sessions/${sessionId}`;
+    url.searchParams.set("after", String(after));
+    const socket = new WebSocket(url, ["rocketry", this.connection.token]);
+    socket.onopen = () => onState(true);
+    socket.onclose = () => onState(false);
+    socket.onerror = () => onState(false);
+    socket.onmessage = (message) => {
+      onEvent(JSON.parse(String(message.data)) as AgentEvent);
+    };
+    return () => socket.close(1000);
+  }
+}

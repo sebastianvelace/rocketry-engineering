@@ -1,0 +1,107 @@
+import { useEffect, useMemo, useRef } from "react";
+import uPlot from "uplot";
+import "uplot/dist/uPlot.min.css";
+import type { RunRecord } from "./types";
+
+interface RunPlotProps {
+  run: RunRecord;
+}
+
+function numericColumns(run: RunRecord): number[] {
+  return run.columns
+    .map((_, index) => index)
+    .filter((index) =>
+      run.rows.some((row) => typeof row[index] === "number" && Number.isFinite(row[index])),
+    );
+}
+
+export function RunPlot({ run }: RunPlotProps) {
+  const host = useRef<HTMLDivElement>(null);
+  const numeric = useMemo(() => numericColumns(run), [run]);
+
+  const categoricalMetrics =
+    numeric.length === 1 &&
+    run.rows.some((row) => typeof row[0] === "string" && typeof row[numeric[0]] === "number");
+
+  useEffect(() => {
+    if (!host.current || numeric.length === 0 || categoricalMetrics) return;
+    const element = host.current;
+    const xIndex = numeric[0];
+    const yIndexes = numeric.slice(1, 5);
+    const plottedY = yIndexes.length > 0 ? yIndexes : [xIndex];
+    const rows = run.rows.filter((row) =>
+      [xIndex, ...plottedY].every((index) => typeof row[index] === "number"),
+    );
+    const x =
+      yIndexes.length > 0
+        ? rows.map((row) => Number(row[xIndex]))
+        : rows.map((_, index) => index);
+    const data: uPlot.AlignedData = [
+      x,
+      ...plottedY.map((index) => rows.map((row) => Number(row[index]))),
+    ];
+    const colors = ["#ef4444", "#88a4c2", "#d4d9e0", "#8b6f73"];
+    const plot = new uPlot(
+      {
+        width: Math.max(320, element.clientWidth),
+        height: Math.max(240, element.clientHeight),
+        cursor: { drag: { x: true, y: false } },
+        legend: { show: true },
+        axes: [
+          {
+            stroke: "#768292",
+            grid: { stroke: "#242b35", width: 1 },
+            ticks: { stroke: "#303846" },
+          },
+          {
+            stroke: "#768292",
+            grid: { stroke: "#242b35", width: 1 },
+            ticks: { stroke: "#303846" },
+          },
+        ],
+        scales: { x: { time: false } },
+        series: [
+          { label: yIndexes.length > 0 ? run.columns[xIndex] : "sample" },
+          ...plottedY.map((index, seriesIndex) => ({
+            label: run.columns[index] || `column ${index + 1}`,
+            stroke: colors[seriesIndex],
+            width: seriesIndex === 0 ? 2 : 1.5,
+            points: { show: false },
+          })),
+        ],
+      },
+      data,
+      element,
+    );
+    const observer = new ResizeObserver(([entry]) => {
+      plot.setSize({
+        width: Math.max(320, Math.floor(entry.contentRect.width)),
+        height: Math.max(240, Math.floor(entry.contentRect.height)),
+      });
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      plot.destroy();
+    };
+  }, [categoricalMetrics, numeric, run]);
+
+  if (numeric.length === 0) {
+    return <div className="plot-empty">This run has no numeric series.</div>;
+  }
+  if (categoricalMetrics) {
+    return (
+      <div className="metric-field">
+        {run.rows
+          .filter((row) => typeof row[0] === "string" && typeof row[numeric[0]] === "number")
+          .map((row) => (
+            <div key={String(row[0])}>
+              <span>{String(row[0]).replaceAll("_", " ")}</span>
+              <strong>{Number(row[numeric[0]]).toLocaleString(undefined, { maximumFractionDigits: 3 })}</strong>
+            </div>
+          ))}
+      </div>
+    );
+  }
+  return <div className="run-plot" ref={host} />;
+}

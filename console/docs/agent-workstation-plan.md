@@ -18,9 +18,9 @@ The workstation does not combine provider context. A handoff creates a new
 session with an explicit, editable context package.
 
 Remote Rocketry operation, multi-user access, Cursor and ignition controls are
-outside the first release. Claude's native Remote Control may expose its
-conversation on another device while the local process remains alive; the
-Rocketry UI and ESP32 remain local.
+outside the first release. Cross-computer conversation continuity requires an
+explicit shared session store or a private authenticated relay. The Rocketry
+UI and ESP32 remain local by default.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ Python agent gateway
   |                 |
   | stdio JSONL     | stdio JSONL
   v                 v
-Codex app-server    Claude Code CLI
+Codex app-server    Claude Agent SDK
         \           /
          \         /
           Rocketry MCP
@@ -237,9 +237,9 @@ Official references:
 - <https://code.claude.com/docs/en/mcp>
 - <https://py.sdk.modelcontextprotocol.io/>
 
-### Phase 3: agent gateway
+### Phase 3: agent gateway - implemented
 
-Implement:
+Implemented:
 
 - supervised provider processes;
 - sessions and normalized events;
@@ -247,28 +247,32 @@ Implement:
 - approvals and interruption;
 - event and artifact persistence;
 - serial and simulation locks;
-- worktree allocation; and
 - crash recovery.
 
 The process runs on `127.0.0.1` only and uses an ephemeral bearer token for the
 desktop connection.
 
-### Phase 4: desktop shell
+Worktree allocation remains the final concurrency hardening item before a
+packaged release.
 
-Create a Tauri/React client with:
+### Phase 4: desktop shell - developer build implemented
+
+The Tauri/React client now includes:
 
 - workspace and provider selection;
 - independent conversation history;
 - natural-language composer;
 - activity timeline;
 - approval surface;
-- test and diff inspector;
+- activity and command-output inspector;
 - live engineering plots;
 - bilingual persistent settings; and
 - reduced-motion support.
 
 The normal experience is structured rather than a raw terminal. Full stdout
 and stderr remain available in an advanced inspector.
+
+The diff inspector and structured provider question forms remain open.
 
 ### Phase 5: Streamlit migration
 

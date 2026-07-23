@@ -7,9 +7,9 @@ comparison.
 The application is intentionally local-first. Serial devices, the openMotor
 environment and the OpenRocket JVM all run on the workstation.
 
-UI-independent engineering operations live in `core/services.py`. Streamlit
-is currently one client of that layer; the planned desktop application and
-both agent providers will call the same contracts.
+UI-independent engineering operations live in `core/services.py`. Streamlit,
+the desktop application, the local gateway and both agent providers call the
+same contracts.
 
 ## Product map
 
@@ -48,6 +48,46 @@ repository, so the repository itself can be moved or cloned elsewhere.
 
 ## Run
 
+### Desktop workstation
+
+Install the web dependencies once:
+
+```bash
+cd desktop
+pnpm install
+```
+
+Start the Linux desktop client:
+
+```bash
+pnpm tauri dev
+```
+
+The application starts its own authenticated gateway on a random localhost
+port. It does not require an API key. Codex uses the existing ChatGPT login and
+Claude Agent SDK uses the existing Claude Code subscription login.
+
+The desktop client provides:
+
+- a provider selector for independent Codex and Claude sessions;
+- durable conversation and activity history in `.rocketry/gateway.db`;
+- WebSocket streaming without periodic page polling;
+- inline permission approval and interruption;
+- live History runs, engineering plots and persistent artifacts;
+- a bilingual English/Spanish interface saved in local preferences; and
+- a normalized activity view with raw command output available when relevant.
+
+Build the Linux executable without packaging:
+
+```bash
+pnpm tauri build --debug --no-bundle
+```
+
+The development executable is written to
+`desktop/src-tauri/target/debug/rocketry-workstation`.
+
+### Streamlit console
+
 ```bash
 .venv/bin/streamlit run app.py
 ```
@@ -63,6 +103,8 @@ Run the complete local check:
 
 ```bash
 bash tools/ci_check.sh
+cd desktop && pnpm test && pnpm build
+cd desktop/src-tauri && cargo check
 ```
 
 It compiles the Python sources, runs unit and Streamlit page smoke tests, then
@@ -75,7 +117,7 @@ google-chrome --headless --no-sandbox --remote-debugging-port=9223 about:blank
 .venv/bin/python tools/capture_ui.py http://127.0.0.1:8501 /tmp/console.png
 ```
 
-## Agent activity bridge
+## Legacy Streamlit activity bridge
 
 Run the agent in your terminal through the relay and keep the Agent page open
 beside it:
@@ -89,6 +131,9 @@ The relay preserves terminal output and mirrors normalized events into a
 bounded, ignored JSONL file. Only the Agent page polls it, using a two-second
 Streamlit fragment; the simulation and measurement pages do not rerun. The
 browser cannot execute commands or approve agent actions.
+
+This remains as a compatibility path. The desktop workstation is the primary
+interactive agent interface and uses durable WebSocket events instead.
 
 ### Provider feasibility probes
 
@@ -156,12 +201,12 @@ explicit confirmation in the interface.
 - Wiring diagrams are generated from `core/diagrams.py`; bilingual preparation
   and verification guidance lives in `core/wiring_guides.py`. The numbered
   connection sequence remains the physical assembly source of truth.
-- The current agent bridge is observational. A future fully interactive client
-  should use Codex app-server or Claude streaming JSON and must render approvals
-  explicitly instead of bypassing them.
+- The desktop gateway uses Codex app-server and the official Claude Agent SDK.
+  Both transports render approvals explicitly instead of bypassing them.
 
 ## Documentation
 
 - [Technical audit](docs/technical-audit-2026-07-23.md)
 - [Frontend and UX system](docs/frontend-redesign.md)
 - [Desktop agent workstation plan](docs/agent-workstation-plan.md)
+- [Desktop workstation implementation](docs/desktop-workstation.md)

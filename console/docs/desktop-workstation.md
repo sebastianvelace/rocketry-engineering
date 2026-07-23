@@ -1,0 +1,139 @@
+# Desktop workstation implementation
+
+Date: 2026-07-23
+
+## Delivered boundary
+
+The desktop workstation is a Linux Tauri 2 application backed by a local
+Python gateway. It is intentionally split into four layers:
+
+```text
+React client
+  -> authenticated REST and durable WebSocket
+Python gateway
+  -> Codex app-server or Claude Agent SDK
+Rocketry MCP
+  -> engineering services, runs.db and artifacts
+```
+
+The React client never receives provider credentials and cannot start an
+arbitrary process. Tauri generates an ephemeral token, starts the gateway on a
+random `127.0.0.1` port and passes the connection values through an invoke
+command. The gateway restricts workspaces to the repository root.
+
+## Provider behavior
+
+Codex uses the documented app-server stdio protocol:
+
+- thread start and resume;
+- incremental message, reasoning, command and tool events;
+- exact turn interruption;
+- command, file-change and permission-profile approvals; and
+- `workspaceWrite` sandboxing with `on-request` approval policy.
+
+Claude uses the official Python Agent SDK over the installed Claude Code
+binary:
+
+- the existing Claude subscription OAuth session;
+- persistent session IDs and resume;
+- incremental output;
+- native `can_use_tool` approval callbacks;
+- native interruption; and
+- project/local settings without unrelated user hooks in the workstation
+  process.
+
+Internal Claude status and hook payloads are not persisted. The gateway keeps
+only a compact initialization event, visible tool activity, assistant output
+and usage. This prevents private hook context from leaking into the UI and
+keeps SQLite bounded.
+
+## Persistence and live updates
+
+`.rocketry/gateway.db` uses SQLite WAL mode and stores:
+
+- provider-independent sessions;
+- ordered, idempotent events;
+- pending and resolved approvals; and
+- provider session IDs required for resume.
+
+On restart, active turns become interrupted and orphaned approvals become
+cancelled. A new message reconnects the matching provider session.
+
+The UI replays durable events, then subscribes by WebSocket from the last
+sequence number. Subscriber queues are bounded. If a client is slow, SQLite
+remains the source of truth and reconnect replay fills the gap.
+
+There is no one-second timer. Engineering status, runs and artifacts load at
+startup and refresh after a tool completes or when the operator presses
+refresh.
+
+## Visual system
+
+The interface is treated as an engineering instrument:
+
+- dark neutral surfaces;
+- signal red as the single interaction accent;
+- green only for real connected/ready state;
+- Geist and Geist Mono self-hosted in the bundle;
+- hierarchy through spacing and rules instead of repeated cards;
+- Phosphor icons from one family;
+- Motion only for message, modal and button state transitions;
+- uPlot canvas charts for numeric series;
+- a categorical metric field for Flight summary runs; and
+- reduced-motion fallbacks.
+
+The left rail owns provider sessions, the central pane owns conversation and
+approval, and the right pane owns runs, activity and artifacts. English and
+Spanish labels persist in local storage across routes and restarts.
+
+## Security constraints
+
+- The gateway binds to `127.0.0.1` only.
+- REST requires a bearer token.
+- WebSocket authentication uses a subprotocol, not a query-string token.
+- CORS accepts only Tauri and dynamic localhost development origins.
+- Artifact paths are validated under `.rocketry/artifacts`.
+- Event sizes and result pages are bounded.
+- Serial and simulator operations use Linux file locks across both providers.
+- No MCP ignition, launch actuation or arbitrary shell tool exists.
+
+## Verification completed
+
+- Python store, gateway, adapter and API unit tests.
+- Real REST and WebSocket replay on localhost.
+- Real Claude Agent SDK subscription turn returning
+  `CLAUDE_GATEWAY_OK`.
+- Existing real Codex app-server start, stream and resume probe.
+- React event projection and bilingual copy tests.
+- TypeScript/Vite production build.
+- Rust `cargo check`.
+- Tauri debug executable build.
+- Ten-second executable startup under Xvfb, including the embedded gateway.
+- Headless visual captures at 1440 x 900 with empty and populated sessions.
+
+## Remaining release work
+
+The current application is a verified local developer build, not a portable
+installer. Before calling it a first packaged release:
+
+1. add automatic Git worktree allocation for concurrent modifying sessions;
+2. add structured answers for Claude `AskUserQuestion` and Codex
+   `requestUserInput`;
+3. add a diff inspector and per-operation progress detail;
+4. run ESP32 disconnect/capture cancellation acceptance with the device
+   attached;
+5. add visual regression snapshots for 900, 1280 and 1440 pixel widths;
+6. package the Python gateway as a sidecar instead of depending on the
+   repository `.venv`; and
+7. choose a remote-session strategy.
+
+Remote access is deliberately not enabled by binding the gateway to the LAN.
+For a second computer, the safe options are:
+
+- Tailscale plus an authenticated HTTPS relay to this gateway while the
+  engineering machine remains the execution host; or
+- a shared transcript/session store for conversation-only continuity.
+
+The second option matches the stated need to keep the Claude conversation
+available without remotely controlling the ESP32. It should be implemented
+after choosing the storage account and retention policy.
