@@ -192,28 +192,50 @@ True mid-process termination belongs in the gateway supervisor in Phase 3,
 where a process group can be interrupted and reaped without changing the
 trusted simulation adapters prematurely.
 
-### Phase 2: Rocketry MCP
+### Phase 2: Rocketry MCP — complete
 
-Expose a shared, local MCP server:
+`rocketry_mcp.py` exposes the official Python MCP SDK over local stdio. Both
+provider installations are registered with the same `rocketry` server name
+and absolute interpreter path:
 
 ```text
-rocketry.list_ports
-rocketry.capture_bench
-rocketry.get_wiring_guide
-rocketry.run_motor_sweep
-rocketry.run_flight
-rocketry.get_run
-rocketry.compare_runs
-rocketry.export_csv
-rocketry.run_tests
+system_status       list_ports
+capture_bench       get_wiring_guide
+run_motor_sweep     run_flight
+get_run             compare_runs
+export_csv          run_tests
 ```
 
-Acceptance:
+The implementation deliberately separates the MCP transport
+(`rocketry_mcp.py`) from provider-neutral operations (`core/mcp_tools.py`).
+Codex, Claude, Streamlit and the future gateway therefore share the service
+and persistence layers without importing each other.
 
-- Codex and Claude can invoke the same deterministic operation;
-- every result receives a run or artifact ID;
-- serial access is exclusive; and
-- no hazardous actuation tool exists.
+Completed acceptance:
+
+- the official SDK client initialized, listed all ten tools and invoked
+  `system_status` over a real stdio subprocess;
+- Codex invoked `rocketry.system_status` and returned the expected sentinel;
+- Claude Code reported the server connected, invoked the same operation and
+  returned the expected sentinel;
+- captures and simulations automatically receive a History `run_id`;
+- comparisons, CSV exports and test logs receive persistent `artifact_id`
+  values under the ignored `.rocketry/` data directory;
+- row-returning tools are bounded or paginated to protect model context;
+- Linux `flock` locks coordinate serial, simulator and test operations across
+  the separate provider server processes;
+- tool annotations distinguish read-only queries from local writes;
+- stable service errors are returned as structured MCP errors; and
+- no ignition, actuation, arbitrary shell or arbitrary test command exists.
+
+The complete local suite now contains 33 checks. It found and prevented a
+JSON artifact/manifest filename collision during implementation.
+
+Official references:
+
+- <https://learn.chatgpt.com/docs/extend/mcp?surface=cli>
+- <https://code.claude.com/docs/en/mcp>
+- <https://py.sdk.modelcontextprotocol.io/>
 
 ### Phase 3: agent gateway
 

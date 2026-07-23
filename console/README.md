@@ -114,6 +114,29 @@ They disable Claude tools and use a read-only Codex thread. They are not run by
 CI. See the [desktop agent workstation plan](docs/agent-workstation-plan.md)
 for verified capabilities, remaining risks and implementation phases.
 
+### Shared Rocketry MCP
+
+Both local agents can call the same engineering tools through
+`rocketry_mcp.py`. The server uses stdio, never opens a network listener, and
+does not expose ignition or arbitrary shell execution.
+
+Register it from the repository root if the local provider configuration is
+ever reset:
+
+```bash
+codex mcp add rocketry -- \
+  "$PWD/console/.venv/bin/python" "$PWD/console/rocketry_mcp.py"
+
+claude mcp add --transport stdio --scope local rocketry -- \
+  "$PWD/console/.venv/bin/python" "$PWD/console/rocketry_mcp.py"
+```
+
+`capture_bench`, `run_motor_sweep` and `run_flight` save a normal History run.
+Comparisons, CSV exports and test logs are stored under the ignored
+`console/.rocketry/artifacts/` directory. File locks prevent separate Codex
+and Claude MCP processes from using the same serial or simulator operation at
+the same time.
+
 ## Data
 
 Runs are stored in `runs.db`, which is intentionally ignored by Git. Each

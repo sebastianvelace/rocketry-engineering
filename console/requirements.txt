@@ -5,3 +5,4 @@ pandas>=3.0,<4
 schemdraw>=0.23,<1
 numpy>=2.5,<3
 websockets>=16,<17
+mcp>=1.28,<2
