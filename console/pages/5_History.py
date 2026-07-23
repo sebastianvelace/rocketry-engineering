@@ -63,7 +63,9 @@ with tab_view:
                 fig, stats = plots.plot_block(block)
                 st.plotly_chart(fig, use_container_width=True)
                 if stats:
-                    st.table({"value": stats})
+                    # Same fix as 1_Bench.py: stats mixes floats and strings,
+                    # which breaks Arrow serialization unless stringified.
+                    st.table({"value": {k: str(v) for k, v in stats.items()}})
             except Exception as e:
                 st.warning(f"Could not render this run as a plot: {e}")
                 st.dataframe(pd.DataFrame(run.rows, columns=run.columns or None))

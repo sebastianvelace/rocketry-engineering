@@ -72,7 +72,10 @@ if block is not None:
 
     if stats:
         st.markdown("**Derived numbers**")
-        st.table({"value": stats})
+        # stats mixes floats and strings (e.g. plot_sine's "Aliasing?": "no"),
+        # which breaks Arrow serialization if passed straight through --
+        # st.table needs one consistent dtype per column. Stringify first.
+        st.table({"value": {k: str(v) for k, v in stats.items()}})
 
     st.divider()
     note = st.text_input("Note for this run (optional)", key="note_input")
