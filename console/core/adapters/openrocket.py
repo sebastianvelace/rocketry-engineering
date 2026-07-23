@@ -26,17 +26,27 @@ def fly(eng_path: str, architecture: str = "mindia", fin: dict | None = None,
     if not OPENROCKET_VENV_PYTHON.exists():
         raise OpenRocketError(f"OpenRocket venv not found at {OPENROCKET_VENV_PYTHON}")
 
-    params = {"eng_path": eng_path, "architecture": architecture, "wind": wind}
+    resolved_eng_path = Path(eng_path).expanduser().resolve()
+    if not resolved_eng_path.is_file():
+        raise OpenRocketError(f"Motor curve not found at {resolved_eng_path}")
+
+    params = {"eng_path": str(resolved_eng_path), "architecture": architecture, "wind": wind}
     if fin:
         params["fin"] = fin
 
-    proc = subprocess.run(
-        [str(OPENROCKET_VENV_PYTHON), str(RUNNER), json.dumps(params)],
-        cwd=str(OPENROCKET_DIR),
-        capture_output=True,
-        text=True,
-        timeout=timeout_s,
-    )
+    try:
+        proc = subprocess.run(
+            [str(OPENROCKET_VENV_PYTHON), str(RUNNER), json.dumps(params)],
+            cwd=str(OPENROCKET_DIR),
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise OpenRocketError(
+            f"OpenRocket did not finish within {timeout_s:.0f}s. "
+            "Check the JVM and reduce model complexity before retrying."
+        ) from exc
 
     if proc.returncode != 0:
         raise OpenRocketError(f"or_fly.py exited {proc.returncode}: {proc.stderr[-2000:]}")

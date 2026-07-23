@@ -1,0 +1,20 @@
+[client]
+showSidebarNavigation = false
+toolbarMode = "minimal"
+
+[theme]
+base = "dark"
+primaryColor = "#ff6b2c"
+backgroundColor = "#080b10"
+secondaryBackgroundColor = "#10151d"
+textColor = "#eef2f7"
+linkColor = "#ff8a57"
+baseRadius = "0.55rem"
+buttonRadius = "0.45rem"
+borderColor = "#29313d"
+dataframeHeaderBackgroundColor = "#151c26"
+showWidgetBorder = true
+showSidebarBorder = true
+font = "'Aptos', 'Segoe UI Variable', 'Helvetica Neue', sans-serif"
+headingFont = "'Arial Narrow', 'Aptos Display', 'Segoe UI Variable', sans-serif"
+codeFont = "'IBM Plex Mono', 'Cascadia Code', 'SFMono-Regular', monospace"

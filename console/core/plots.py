@@ -29,6 +29,8 @@ def detect_kind(block: Block) -> str:
 
 def plot_time_series(block: Block, x_label="time (ms)", y_label="value") -> go.Figure:
     """Generic fallback: first column as x, second as y."""
+    if not block.rows:
+        raise ValueError("the captured block contains no numeric rows")
     if block.columns and len(block.columns) >= 2:
         x, y = block.column(0), block.column(1)
     else:
@@ -205,6 +207,7 @@ def plot_thrust_replay(block: Block) -> tuple[go.Figure, dict]:
 
 _DISPATCH = {
     "SINE": plot_sine,
+    "FFT": plot_fft,
     "TIMING": plot_jitter,
     "STEP": plot_step,
     "ADC_CAL": plot_adc_cal,
@@ -215,6 +218,11 @@ _DISPATCH = {
 
 def plot_block(block: Block):
     """Pick the right plot for a block and return (figure, stats_dict)."""
+    if not block.rows:
+        raise ValueError("the block is empty")
+    widths = {len(row) for row in block.rows}
+    if len(widths) != 1:
+        raise ValueError("the block contains rows with inconsistent column counts")
     kind = detect_kind(block)
     fn = _DISPATCH.get(kind)
     if fn is None:

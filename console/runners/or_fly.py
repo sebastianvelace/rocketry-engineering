@@ -17,7 +17,7 @@ import json
 import sys
 from pathlib import Path
 
-FLIGHT_DIR = str(Path.home() / "rocketry-portfolio" / "simulation" / "flight")
+FLIGHT_DIR = str(Path(__file__).resolve().parents[2] / "simulation" / "flight")
 sys.path.insert(0, FLIGHT_DIR)
 
 import architecture as A  # noqa: E402

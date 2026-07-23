@@ -1,6 +1,7 @@
-streamlit
-plotly
-pyserial
-pandas
-schemdraw
-numpy
+streamlit>=1.60,<2
+plotly>=6.9,<7
+pyserial>=3.5,<4
+pandas>=3.0,<4
+schemdraw>=0.23,<1
+numpy>=2.5,<3
+websockets>=16,<17

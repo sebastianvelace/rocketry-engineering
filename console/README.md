@@ -1,61 +1,91 @@
 # Rocketry Console
 
-Local Streamlit dashboard that centralizes the ESP32 bench captures and (as
-more pages are built) the openMotor and OpenRocket simulations, with a
-persistent SQLite history so runs can be compared across sessions.
+Local engineering workstation for ESP32 bench captures, wiring guidance,
+openMotor grain sweeps, OpenRocket flight simulations and persistent run
+comparison.
 
-Design rationale, architecture, and the rebanada-by-rebanada plan are in
-[`/home/sebasvelace/.claude/plans/solo-yo-busca-la-robust-bentley.md`](../CLAUDE.md).
+The application is intentionally local-first. Serial devices, the openMotor
+environment and the OpenRocket JVM all run on the workstation.
 
-## Setup (one time)
+## Product map
 
-```
-cd console
+| Module | Job |
+| --- | --- |
+| Home | Shows hardware, simulation and archive readiness. Routes the operator to the next action. |
+| Bench | Reads one complete ESP32 block, detects the measurement type, plots it and saves it. |
+| Wiring | Guides preparation, pin-by-pin assembly and a pre-power inspection. |
+| Motor | Runs a bounded BATES geometry sweep and exposes viable openMotor candidates. |
+| Flight | Builds and flies a vehicle in OpenRocket from a motor curve and fin geometry. |
+| History | Reopens, compares, exports and manages saved runs. |
+
+## Setup
+
+From `console/`:
+
+```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
+External simulation environments are expected at:
+
+```text
+~/openMotor/.venv/bin/python
+~/openrocket/.venv/bin/python
+```
+
+The simulation source folders and `.eng` curves are resolved relative to the
+repository, so the repository itself can be moved or cloned elsewhere.
+
 ## Run
 
+```bash
+.venv/bin/streamlit run app.py
 ```
-console/.venv/bin/streamlit run console/app.py
+
+Open `http://localhost:8501`.
+
+Serial access on Linux may require membership in the group that owns
+`/dev/ttyUSB*` or `/dev/ttyACM*` (commonly `dialout`).
+
+## Verify
+
+Run the complete local check:
+
+```bash
+bash tools/ci_check.sh
 ```
 
-Opens at `http://localhost:8501`. This only runs locally — it reads the ESP32's
-serial port directly, which is not possible from a hosted web app.
+It compiles the Python sources, runs unit and Streamlit page smoke tests, then
+checks the Git diff for whitespace errors.
 
-## Pages
+Optional browser capture:
 
-- **Bench** — capture a block from the ESP32, auto-detect its kind (sine,
-  FFT, jitter, RC step, ADC calibration, Bode sweep, thrust replay), plot it,
-  save it.
-- **Wiring** — reproducible schematics (schemdraw) + explicit pin-to-pin
-  tables for the bench circuits.
-- **Motor** — BATES grain sweep in openMotor, run as a subprocess in its own
-  venv (`motorlib` is an unpackaged source tree that only imports with
-  `cwd=~/openMotor`).
-- **Flight** — fly a design in OpenRocket, also a subprocess (its own venv,
-  isolates the JVM to one process per simulation).
-- **History** — every saved run, filterable by kind; reopen one to re-plot
-  it, overlay several of the same kind to compare, export CSV, delete.
+```bash
+google-chrome --headless --no-sandbox --remote-debugging-port=9223 about:blank
+.venv/bin/python tools/capture_ui.py http://127.0.0.1:8501 /tmp/console.png
+```
 
-## Status
+## Data
 
-All 5 rebanadas of the original plan are complete and verified against real
-hardware/data (not just synthetic tests) — see
-[`~/.claude/plans/solo-yo-busca-la-robust-bentley.md`](../../.claude/plans/solo-yo-busca-la-robust-bentley.md)
-for the full verification log, including two real bugs caught and fixed along
-the way (a `sys.path` issue in the openMotor subprocess, and a motor-mass
-double-count in the OpenRocket 'mindia' architecture).
+Runs are stored in `runs.db`, which is intentionally ignored by Git. Each
+record includes UTC creation time, type, metadata, column names, row data and
+an operator note.
 
-## Notes
+CSV export is available from History. Deletion is permanent and requires an
+explicit confirmation in the interface.
 
-- `console/.venv/` and `console/runs.db` are gitignored (local environment and
-  local data, not portfolio artifacts).
-- The plot math mirrors the standalone scripts in `avionics/daq-fase1/`
-  exactly — this app does not reimplement the analysis, it re-renders it.
-  Same principle for Motor/Flight: the subprocess runners import and call the
-  existing `sweep_bates.py` / `architecture.py` functions unmodified.
-- Known limits: local-only (serial + JVM access require it), no live streaming
-  at kHz rates (Streamlit's rerun model doesn't fit that; the DAQ's block-based
-  capture does), no embedded OpenRocket GUI, no 3D rocket view.
+## Engineering constraints
+
+- Bench captures complete blocks, not a continuous kHz stream.
+- Motor and Flight execute in isolated subprocesses to protect Streamlit from
+  openMotor import assumptions and JVM lifecycle constraints.
+- A viable simulated configuration is not a manufacturing, firing or launch
+  authorization.
+- Wiring diagrams are generated from `core/diagrams.py`; the numbered
+  connection sequence is the physical assembly source of truth.
+
+## Documentation
+
+- [Technical audit](docs/technical-audit-2026-07-23.md)
+- [Frontend and UX system](docs/frontend-redesign.md)

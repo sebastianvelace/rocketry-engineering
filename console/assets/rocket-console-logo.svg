@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 330 64" role="img" aria-labelledby="title">
+  <title id="title">Rocketry Console</title>
+  <rect width="64" height="64" rx="14" fill="#10151d"/>
+  <circle cx="32" cy="32" r="21" fill="none" stroke="#303a48" stroke-width="2"/>
+  <circle cx="32" cy="32" r="12" fill="none" stroke="#303a48" stroke-width="2" stroke-dasharray="3 4"/>
+  <path d="M22 39 L38 23 L42 22 L41 26 L25 42 Z" fill="#eef2f7"/>
+  <path d="M23 38 L18 42 L24 41 Z" fill="#ff6b2c"/>
+  <circle cx="38" cy="26" r="2.5" fill="#ff6b2c"/>
+  <text x="82" y="28" fill="#eef2f7" font-family="Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="1">ROCKETRY</text>
+  <text x="82" y="49" fill="#8d99a8" font-family="monospace" font-size="14" letter-spacing="3">CONSOLE</text>
+</svg>

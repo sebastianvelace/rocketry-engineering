@@ -23,6 +23,7 @@ import time
 from dataclasses import dataclass, field
 
 import serial
+from serial.tools import list_ports
 
 DEFAULT_BAUD = 115200
 
@@ -59,8 +60,25 @@ class Block:
 
 
 def find_ports():
-    """List candidate serial ports (Linux naming)."""
-    return sorted(glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*"))
+    """List likely USB serial devices and exclude motherboard UARTs."""
+    discovered = set()
+    for port in list_ports.comports():
+        descriptor = " ".join(
+            str(value or "") for value in (port.description, port.manufacturer, port.product)
+        ).casefold()
+        is_usb_serial = (
+            port.vid is not None
+            or any(token in descriptor for token in ("usb", "cp210", "ch340", "ch910", "ftdi", "esp32"))
+            or port.device.startswith(("/dev/ttyUSB", "/dev/ttyACM", "/dev/cu.usb"))
+            or port.device.upper().startswith("COM")
+        )
+        if is_usb_serial:
+            discovered.add(port.device)
+    # Some Linux containers expose device nodes without enough metadata for
+    # comports(), so retain the explicit fallback used by the original app.
+    discovered.update(glob.glob("/dev/ttyUSB*"))
+    discovered.update(glob.glob("/dev/ttyACM*"))
+    return sorted(discovered)
 
 
 def _parse_meta_line(line):
@@ -132,9 +150,15 @@ def read_one_block(ser: serial.Serial, timeout_s: float = 15.0) -> Block | None:
             continue
 
         try:
-            rows.append([float(x) for x in line.split(",")])
+            row = [float(x) for x in line.split(",")]
         except ValueError:
             continue
+        expected_width = len(columns) if columns else (len(rows[0]) if rows else len(row))
+        if len(row) != expected_width:
+            # A truncated or mixed-width serial line would make every plot
+            # fail later. Ignore it and keep waiting for a coherent block.
+            continue
+        rows.append(row)
 
     return None
 

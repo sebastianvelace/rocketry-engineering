@@ -20,7 +20,7 @@ from pathlib import Path
 # from that directory -- not the case when this script is invoked as a
 # subprocess from elsewhere, so it's added explicitly here).
 sys.path.insert(0, str(Path.home() / "openMotor"))
-sys.path.insert(0, str(Path.home() / "rocketry-portfolio" / "simulation" / "internal-ballistics"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "simulation" / "internal-ballistics"))
 
 import sweep_bates as S  # noqa: E402
 
@@ -32,9 +32,24 @@ def run_sweep(params: dict) -> dict:
     max_total_mm = params.get("max_total_mm", 320)
     target_kn = params.get("target_peak_kn", 280.0)
 
+    if core_lo > core_hi:
+        raise ValueError("core diameter lower bound must not exceed upper bound")
+    if len_lo > len_hi:
+        raise ValueError("segment length lower bound must not exceed upper bound")
+    if len_step <= 0:
+        raise ValueError("segment length step must be positive")
+    if not seg_counts:
+        raise ValueError("at least one segment count is required")
+    if any(int(count) < 1 for count in seg_counts):
+        raise ValueError("segment counts must be positive")
+    if max_total_mm <= 0 or target_kn <= 0:
+        raise ValueError("maximum total length and target Kn must be positive")
+
     S.TARGET_PEAK_KN = float(target_kn)
 
-    core_diameters = [d / 1000 for d in range(core_lo, core_hi)]
+    # The UI presents a conventional inclusive range to avoid silently
+    # dropping the selected upper endpoint.
+    core_diameters = [d / 1000 for d in range(int(core_lo), int(core_hi) + 1)]
     segment_lengths = [l / 1000 for l in range(len_lo, len_hi + 1, len_step)]
 
     rejected = {"kn": 0, "port": 0, "flux": 0, "mach": 0, "pressure": 0}

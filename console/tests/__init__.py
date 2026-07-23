@@ -1,0 +1,1 @@
+"""Rocketry Console test suite."""

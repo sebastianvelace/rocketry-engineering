@@ -91,3 +91,43 @@ CIRCUITS = {
     "RC anti-aliasing filter (Phase 3)": rc_filter,
     "IMU + barometer I2C (future)": imu_baro_i2c,
 }
+
+
+CIRCUIT_GUIDES = {
+    "Direct jumper (Phase 1/2/4)": {
+        "short": "DAC loopback",
+        "purpose": "Send the ESP32 DAC output directly back into its ADC input.",
+        "use_for": "Sine, FFT, ADC timing and thrust replay captures.",
+        "parts": ["1 ESP32", "1 jumper wire", "1 USB data cable"],
+        "before": "Disconnect USB power before moving the jumper.",
+        "verify": [
+            "GPIO25 is the signal source (DAC).",
+            "GPIO34 is the measurement input (ADC).",
+            "No external voltage source is connected to GPIO34.",
+        ],
+    },
+    "RC anti-aliasing filter (Phase 3)": {
+        "short": "RC filter",
+        "purpose": "Place a first-order low-pass filter between the DAC and ADC.",
+        "use_for": "Step response and Bode response captures.",
+        "parts": ["1 ESP32", "1 × 220 Ω resistor", "1 × 10 µF capacitor", "Jumper wires", "Breadboard"],
+        "before": "Disconnect USB power and identify the capacitor polarity before wiring.",
+        "verify": [
+            "The capacitor long leg (+) shares the GPIO34 node.",
+            "The striped or short capacitor leg (-) goes to GND.",
+            "The resistor sits between GPIO25 and the GPIO34 node.",
+        ],
+    },
+    "IMU + barometer I2C (future)": {
+        "short": "I2C sensors",
+        "purpose": "Share one 3.3 V I2C bus between the IMU and barometer.",
+        "use_for": "Future inertial and atmospheric sensor integration.",
+        "parts": ["1 ESP32", "1 MPU6050 / GY-521", "1 BME280", "Jumper wires", "Breadboard"],
+        "before": "Confirm both sensor modules accept 3.3 V logic and power.",
+        "verify": [
+            "Both sensors share 3.3 V and GND.",
+            "Both SDA pins connect to GPIO21.",
+            "Both SCL pins connect to GPIO22.",
+        ],
+    },
+}

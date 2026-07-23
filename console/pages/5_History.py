@@ -1,7 +1,4 @@
-"""History page: browse every saved run (bench captures, motor sweeps, flight
-sims), reopen one to re-plot it, or overlay several runs of the same kind to
-compare them directly. This is what makes the console a single place instead
-of a set of disconnected panels."""
+"""Browse, reopen, compare, export and manage saved engineering runs."""
 import sys
 from pathlib import Path
 
@@ -9,100 +6,211 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "core"))
+CORE = Path(__file__).resolve().parent.parent / "core"
+sys.path.insert(0, str(CORE))
+
 import blocks  # noqa: E402
 import plots  # noqa: E402
 import store  # noqa: E402
+import ui  # noqa: E402
 
-st.set_page_config(page_title="History — Rocketry Console", layout="wide")
-st.title("Run history")
-st.caption("Every saved bench capture, motor sweep, and flight simulation, in one place.")
+st.set_page_config(
+    page_title="History | Rocketry Console",
+    page_icon=":material/history:",
+    layout="wide",
+    initial_sidebar_state="auto",
+)
+ui.setup_page("History")
+ui.page_header(
+    "Run archive",
+    "History",
+    "Reopen captured and simulated evidence, compare compatible values and export the underlying rows.",
+)
+
+
+def label_for(run: store.RunRecord) -> str:
+    note = f" · {run.note}" if run.note else ""
+    return f"#{run.id} · {run.created_at[:19]} · {run.kind}{note}"
+
+
+def numeric_columns(run: store.RunRecord) -> list[tuple[str, int]]:
+    """Return columns whose non-empty values are all numeric."""
+    if not run.rows:
+        return []
+    width = max(len(row) for row in run.rows)
+    names = run.columns or [f"column_{idx + 1}" for idx in range(width)]
+    numeric = []
+    for idx in range(width):
+        values = [row[idx] for row in run.rows if len(row) > idx and row[idx] is not None]
+        if values and all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in values):
+            numeric.append((names[idx] if idx < len(names) else f"column_{idx + 1}", idx))
+    return numeric
+
 
 all_runs = store.list_runs()
 
 if not all_runs:
-    st.info("No runs saved yet. Capture something on the Bench, Motor, or Flight pages first.")
+    st.info(
+        "History is empty. Save a Bench capture, Motor sweep or Flight result to create the first run.",
+        icon=":material/history:",
+    )
+    a, b, c = st.columns(3)
+    a.page_link("pages/1_Bench.py", label="Open Bench", icon=":material/monitor_heart:", width="stretch")
+    b.page_link("pages/3_Motor.py", label="Open Motor", icon=":material/local_fire_department:", width="stretch")
+    c.page_link("pages/4_Flight.py", label="Open Flight", icon=":material/rocket_launch:", width="stretch")
     st.stop()
 
-kinds = sorted({r.kind for r in all_runs})
-kind_filter = st.multiselect("Filter by kind", kinds, default=kinds)
+kinds = sorted({run.kind for run in all_runs})
+filter_col, search_col = st.columns([1.2, 1])
+with filter_col:
+    kind_filter = st.multiselect("Measurement type", kinds, default=kinds)
+with search_col:
+    note_query = st.text_input("Search notes", placeholder="Filter by note text")
 
-filtered = [r for r in all_runs if r.kind in kind_filter]
+filtered = [
+    run
+    for run in all_runs
+    if run.kind in kind_filter and note_query.casefold() in run.note.casefold()
+]
 
-st.markdown(f"**{len(filtered)}** of {len(all_runs)} runs shown.")
+shown, total, types = st.columns(3)
+shown.metric("Runs shown", len(filtered))
+total.metric("Total archive", len(all_runs))
+types.metric("Types", len({run.kind for run in filtered}))
+
+if not filtered:
+    st.warning("No run matches the current filters. Clear the note search or select another measurement type.")
+    st.stop()
 
 table_data = [
-    {"id": r.id, "created_at": r.created_at, "kind": r.kind, "note": r.note}
-    for r in filtered
+    {"Run": run.id, "Captured (UTC)": run.created_at, "Type": run.kind, "Note": run.note or "No note"}
+    for run in filtered
 ]
-st.dataframe(pd.DataFrame(table_data), use_container_width=True, height=250)
+st.dataframe(pd.DataFrame(table_data), width="stretch", height=270, hide_index=True)
 
-st.divider()
-
-tab_view, tab_compare, tab_manage = st.tabs(["View one run", "Compare runs", "Manage"])
+tab_view, tab_compare, tab_manage = st.tabs(
+    [":material/visibility: Inspect", ":material/compare_arrows: Compare", ":material/settings: Manage"]
+)
 
 with tab_view:
-    ids = [r.id for r in filtered]
-    if ids:
-        selected_id = st.selectbox("Run id", ids, key="view_id")
-        run = store.get_run(selected_id)
-        st.markdown(f"**#{run.id}** · {run.kind} · {run.created_at}")
-        if run.note:
-            st.caption(f"Note: {run.note}")
-        st.json(run.meta)
+    labels = {label_for(run): run.id for run in filtered}
+    selected_label = st.selectbox("Run", list(labels))
+    run = store.get_run(labels[selected_label])
 
-        if run.kind in ("MOTOR_SWEEP",):
-            df = pd.DataFrame(run.rows, columns=run.columns)
-            st.dataframe(df, use_container_width=True)
-        elif run.kind == "FLIGHT":
-            df = pd.DataFrame(run.rows, columns=run.columns)
-            st.table(df)
-        else:
-            try:
-                block = blocks.Block.from_run(run)
-                fig, stats = plots.plot_block(block)
-                st.plotly_chart(fig, use_container_width=True)
-                if stats:
-                    # Same fix as 1_Bench.py: stats mixes floats and strings,
-                    # which breaks Arrow serialization unless stringified.
-                    st.table({"value": {k: str(v) for k, v in stats.items()}})
-            except Exception as e:
-                st.warning(f"Could not render this run as a plot: {e}")
-                st.dataframe(pd.DataFrame(run.rows, columns=run.columns or None))
+    if run is None:
+        st.error("The selected run no longer exists. Refresh History.")
+    else:
+        meta_col, data_col = st.columns([1, 1.7])
+        with meta_col:
+            st.subheader(f"Run #{run.id}")
+            st.caption(f"{run.kind} · {run.created_at}")
+            if run.note:
+                st.write(run.note)
+            st.json(run.meta, expanded=False)
 
-        csv = pd.DataFrame(run.rows, columns=run.columns or None).to_csv(index=False)
-        st.download_button("Download as CSV", csv, file_name=f"run_{run.id}_{run.kind}.csv")
+            csv = pd.DataFrame(run.rows, columns=run.columns or None).to_csv(index=False)
+            st.download_button(
+                "Export CSV",
+                csv,
+                file_name=f"run_{run.id}_{run.kind}.csv",
+                mime="text/csv",
+                icon=":material/download:",
+                width="stretch",
+            )
+
+        with data_col:
+            if run.kind == "MOTOR_SWEEP":
+                st.dataframe(pd.DataFrame(run.rows, columns=run.columns), width="stretch", height=430, hide_index=True)
+            elif run.kind == "FLIGHT":
+                flight_df = pd.DataFrame(run.rows, columns=run.columns)
+                st.dataframe(flight_df, width="stretch", hide_index=True)
+            else:
+                try:
+                    block = blocks.Block.from_run(run)
+                    fig, stats = plots.plot_block(block)
+                    ui.style_plotly(fig, height=480)
+                    st.plotly_chart(fig, width="stretch", config={"displaylogo": False})
+                    if stats:
+                        metric_cols = st.columns(min(3, len(stats)))
+                        for idx, (name, value) in enumerate(stats.items()):
+                            metric_cols[idx % len(metric_cols)].metric(name, value)
+                except (KeyError, ValueError, IndexError, TypeError) as exc:
+                    st.warning(f"The original plot cannot be reconstructed: {exc}")
+                    st.dataframe(pd.DataFrame(run.rows, columns=run.columns or None), width="stretch")
 
 with tab_compare:
-    st.caption("Pick two or more runs of the *same kind* to overlay on one chart.")
-    compare_kind = st.selectbox("Kind to compare", sorted({r.kind for r in filtered}))
-    same_kind = [r for r in filtered if r.kind == compare_kind]
-    labels = {f"#{r.id} ({r.created_at[:19]}) {r.note}".strip(): r.id for r in same_kind}
-    picked = st.multiselect("Runs", list(labels.keys()))
+    st.write("Choose runs of one type, then select numeric axes that are meaningful for that data.")
+    compare_kind = st.selectbox("Type", sorted({run.kind for run in filtered}), key="compare_kind")
+    same_kind = [run for run in filtered if run.kind == compare_kind]
+    compare_labels = {label_for(run): run.id for run in same_kind}
+    picked = st.multiselect("Runs to overlay", list(compare_labels), max_selections=6)
 
-    if len(picked) >= 2:
-        fig = go.Figure()
-        for label in picked:
-            run = store.get_run(labels[label])
-            if len(run.rows) < 1 or len(run.rows[0]) < 2:
-                continue
-            # Some firmwares (e.g. main.cpp's sine capture) emit no CSV header,
-            # so run.columns can be empty -- fall back to positional indexing
-            # rather than assuming named columns exist (this bug was caught
-            # while verifying this page).
-            x = [row[0] for row in run.rows]
-            y = [row[1] for row in run.rows]
-            fig.add_trace(go.Scatter(x=x, y=y, mode="lines", name=label))
-        x_label = same_kind[0].columns[0] if same_kind[0].columns else "x"
-        y_label = same_kind[0].columns[1] if len(same_kind[0].columns) > 1 else "y"
-        fig.update_layout(title=f"Overlay — {compare_kind}", xaxis_title=x_label, yaxis_title=y_label)
-        st.plotly_chart(fig, use_container_width=True)
-    elif picked:
-        st.info("Pick at least 2 runs to overlay them.")
+    loaded = [store.get_run(compare_labels[label]) for label in picked]
+    loaded = [run for run in loaded if run is not None]
+
+    if loaded:
+        common_numeric = {
+            name: idx for name, idx in numeric_columns(loaded[0])
+        }
+        for candidate in loaded[1:]:
+            candidate_names = {name for name, _ in numeric_columns(candidate)}
+            common_numeric = {name: idx for name, idx in common_numeric.items() if name in candidate_names}
+
+        if not common_numeric:
+            st.warning("The selected runs do not share a numeric column that can be compared.")
+        else:
+            axis_a, axis_b = st.columns(2)
+            names = list(common_numeric)
+            with axis_a:
+                x_choice = st.selectbox("Horizontal axis", ["Sample index", *names])
+            with axis_b:
+                y_default = min(1, len(names) - 1)
+                y_choice = st.selectbox("Vertical axis", names, index=y_default)
+
+            if len(loaded) < 2:
+                st.info("Select at least two runs to create an overlay.")
+            else:
+                fig = go.Figure()
+                for label, run in zip(picked, loaded):
+                    name_to_idx = dict(numeric_columns(run))
+                    y_idx = name_to_idx[y_choice]
+                    y_values = [row[y_idx] for row in run.rows if len(row) > y_idx]
+                    if x_choice == "Sample index":
+                        x_values = list(range(len(y_values)))
+                    else:
+                        x_idx = name_to_idx[x_choice]
+                        paired = [
+                            (row[x_idx], row[y_idx])
+                            for row in run.rows
+                            if len(row) > max(x_idx, y_idx)
+                        ]
+                        x_values = [pair[0] for pair in paired]
+                        y_values = [pair[1] for pair in paired]
+                    fig.add_trace(go.Scatter(x=x_values, y=y_values, mode="lines+markers", name=label))
+
+                fig.update_layout(
+                    title=f"{compare_kind} comparison",
+                    xaxis_title=x_choice,
+                    yaxis_title=y_choice,
+                )
+                ui.style_plotly(fig, height=540)
+                st.plotly_chart(fig, width="stretch", config={"displaylogo": False})
+    else:
+        st.info("Select two or more compatible runs.")
 
 with tab_manage:
-    st.caption("Delete runs you no longer need.")
-    del_id = st.selectbox("Run id to delete", [r.id for r in filtered], key="del_id")
-    if st.button("Delete run", type="secondary"):
-        store.delete_run(del_id)
-        st.success(f"Deleted run #{del_id}. Refresh the page to update the list.")
+    st.subheader("Delete a run")
+    st.write("Deletion removes the selected run from the local SQLite archive and cannot be undone from the console.")
+    delete_labels = {label_for(run): run.id for run in filtered}
+    delete_label = st.selectbox("Run to delete", list(delete_labels), key="delete_run")
+    confirm = st.checkbox("I understand that this permanently removes the selected run.")
+    if st.button(
+        "Delete selected run",
+        type="secondary",
+        icon=":material/delete:",
+        disabled=not confirm,
+    ):
+        delete_id = delete_labels[delete_label]
+        store.delete_run(delete_id)
+        st.success(f"Run #{delete_id} deleted.")
+        st.rerun()
