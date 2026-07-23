@@ -168,7 +168,7 @@ with detail_right:
     else:
         st.success(T("OpenRocket returned no simulation warnings.", "OpenRocket no devolvió advertencias de simulación."), icon=":material/check_circle:")
 
-with st.container(key="flight-save", border=True):
+with st.container(key="flight-save"):
     st.subheader(T("Save this flight", "Guardar este vuelo"))
     note = st.text_input(T("Run note", "Nota de la corrida"), key="flight_note", placeholder=T("Example: E_sintubo, baseline fins, 2 m/s wind", "Ejemplo: E_sintubo, aletas base, viento de 2 m/s"))
     if st.button(T("Save to History", "Guardar en Historial"), icon=":material/save:", width="stretch"):

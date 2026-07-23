@@ -17,6 +17,7 @@ environment and the OpenRocket JVM all run on the workstation.
 | Motor | Runs a bounded BATES geometry sweep and exposes viable openMotor candidates. |
 | Flight | Builds and flies a vehicle in OpenRocket from a motor curve and fin geometry. |
 | History | Reopens, compares, exports and manages saved runs. |
+| Agent | Mirrors structured Codex or Claude activity from a terminal session without exposing a browser shell. |
 
 Use the `Language / Idioma` selector in the sidebar to switch the complete
 console between English and Spanish. The selection remains active for the
@@ -70,6 +71,21 @@ google-chrome --headless --no-sandbox --remote-debugging-port=9223 about:blank
 .venv/bin/python tools/capture_ui.py http://127.0.0.1:8501 /tmp/console.png
 ```
 
+## Agent activity bridge
+
+Run the agent in your terminal through the relay and keep the Agent page open
+beside it:
+
+```bash
+python console/tools/agent_relay.py --provider codex "Run the console checks"
+python console/tools/agent_relay.py --provider claude "Run the console checks"
+```
+
+The relay preserves terminal output and mirrors normalized events into a
+bounded, ignored JSONL file. Only the Agent page polls it, using a two-second
+Streamlit fragment; the simulation and measurement pages do not rerun. The
+browser cannot execute commands or approve agent actions.
+
 ## Data
 
 Runs are stored in `runs.db`, which is intentionally ignored by Git. Each
@@ -89,6 +105,9 @@ explicit confirmation in the interface.
 - Wiring diagrams are generated from `core/diagrams.py`; bilingual preparation
   and verification guidance lives in `core/wiring_guides.py`. The numbered
   connection sequence remains the physical assembly source of truth.
+- The current agent bridge is observational. A future fully interactive client
+  should use Codex app-server or Claude streaming JSON and must render approvals
+  explicitly instead of bypassing them.
 
 ## Documentation
 

@@ -40,16 +40,12 @@ html { scroll-behavior: smooth; }
 body { color-scheme: dark; }
 
 [data-testid="stAppViewContainer"] {
-  background:
-    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px),
-    #080b10;
-  background-size: 32px 32px;
+  background: #080b10;
 }
 
 [data-testid="stMainBlockContainer"] {
-  max-width: 1440px;
-  padding-top: 2.25rem;
+  max-width: 1280px;
+  padding-top: 2rem;
   padding-bottom: 5rem;
 }
 
@@ -58,12 +54,30 @@ body { color-scheme: dark; }
 }
 
 [data-testid="stSidebarContent"] {
-  padding: 1.2rem 1rem 2rem;
+  padding: 1.35rem 1rem 2rem;
 }
 
 [data-testid="stLogo"] {
   margin: 0 0 .65rem;
   max-width: 210px;
+}
+
+[data-testid="stSidebar"] [data-testid="stSegmentedControl"] {
+  margin: .15rem 0 .85rem;
+}
+[data-testid="stSidebar"] [data-testid="stSegmentedControl"] [role="radiogroup"] {
+  width: fit-content;
+  min-height: 1.9rem;
+  padding: 2px;
+  border: 1px solid var(--rc-line);
+  border-radius: 5px;
+  background: transparent;
+}
+[data-testid="stSidebar"] [data-testid="stSegmentedControl"] label {
+  min-height: 1.55rem;
+  padding: 0 .6rem;
+  border-radius: 3px;
+  font: 650 .69rem/1 "IBM Plex Mono", "Cascadia Code", monospace;
 }
 
 h1, h2, h3 {
@@ -89,13 +103,18 @@ a:focus-visible, button:focus-visible, input:focus-visible,
   min-height: 2.65rem;
   font-weight: 650;
   letter-spacing: .005em;
-  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+  background-image: linear-gradient(90deg, var(--rc-accent-soft), var(--rc-accent-soft));
+  background-position: left center;
+  background-repeat: no-repeat;
+  background-size: 0 100%;
+  transition: transform 160ms ease, border-color 160ms ease, background-size 240ms cubic-bezier(.2,.8,.2,1);
 }
 
 [data-testid="stButton"] button:hover, [data-testid="stFormSubmitButton"] button:hover,
 [data-testid="stDownloadButton"] button:hover, [data-testid="stPageLink"] a:hover {
   border-color: var(--rc-accent);
   transform: translateY(-1px);
+  background-size: 100% 100%;
 }
 
 [data-testid="stButton"] button:active, [data-testid="stFormSubmitButton"] button:active,
@@ -104,11 +123,12 @@ a:focus-visible, button:focus-visible, input:focus-visible,
 }
 
 [data-testid="stMetric"] {
-  background: linear-gradient(145deg, rgba(21,28,38,.96), rgba(12,16,23,.96));
-  border: 1px solid var(--rc-line);
-  border-radius: var(--rc-radius);
-  padding: 1rem 1.1rem;
-  min-height: 112px;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--rc-line-strong);
+  border-radius: 0;
+  padding: .85rem 0 1rem;
+  min-height: 92px;
 }
 
 [data-testid="stMetricLabel"] {
@@ -133,9 +153,17 @@ a:focus-visible, button:focus-visible, input:focus-visible,
   padding-inline: 1rem;
 }
 
-[data-testid="stExpander"], [data-testid="stForm"] {
+[data-testid="stForm"] {
+  border: 0;
+  border-top: 1px solid var(--rc-line);
+  border-radius: 0;
+  background: transparent;
+  padding: 1rem 0 0;
+}
+
+[data-testid="stExpander"] {
   border-color: var(--rc-line);
-  background: rgba(16,21,29,.72);
+  background: transparent;
 }
 
 [data-testid="stDataFrame"], [data-testid="stTable"] {
@@ -160,6 +188,7 @@ a:focus-visible, button:focus-visible, input:focus-visible,
   margin: .2rem 0 1.65rem;
   padding: 0 0 1.2rem;
   border-bottom: 1px solid var(--rc-line);
+  animation: rc-enter 420ms cubic-bezier(.2,.8,.2,1) both;
 }
 
 .rc-page-kicker {
@@ -187,27 +216,26 @@ a:focus-visible, button:focus-visible, input:focus-visible,
 
 .rc-hero {
   position: relative;
-  overflow: hidden;
-  min-height: 390px;
-  padding: clamp(1.5rem, 4vw, 3.6rem);
-  border: 1px solid var(--rc-line);
-  border-radius: var(--rc-radius);
-  background:
-    radial-gradient(circle at 82% 48%, rgba(239,68,68,.12), transparent 25%),
-    linear-gradient(120deg, rgba(21,28,38,.98), rgba(8,11,16,.96));
+  min-height: 315px;
+  padding: clamp(1.2rem, 3vw, 2.7rem) 0;
+  border: 0;
+  border-top: 1px solid var(--rc-line-strong);
+  border-bottom: 1px solid var(--rc-line);
+  background: transparent;
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr);
-  align-items: center;
-  gap: 2rem;
+  grid-template-columns: minmax(0, 1.55fr) minmax(220px, .45fr);
+  align-items: end;
+  gap: 3rem;
+  animation: rc-enter 480ms cubic-bezier(.2,.8,.2,1) both;
 }
 
 .rc-hero-copy { position: relative; z-index: 2; }
 .rc-hero h1 {
   margin: .5rem 0 .9rem;
   max-width: 760px;
-  font-size: clamp(2.8rem, 6vw, 6rem);
-  line-height: .88;
-  letter-spacing: -.055em;
+  font-size: clamp(3rem, 5.6vw, 5.7rem);
+  line-height: .9;
+  letter-spacing: -.06em;
 }
 .rc-hero p {
   max-width: 560px;
@@ -215,49 +243,36 @@ a:focus-visible, button:focus-visible, input:focus-visible,
   font-size: 1.02rem;
 }
 
-.rc-orbit {
-  position: relative;
-  width: min(32vw, 330px);
-  aspect-ratio: 1;
-  justify-self: center;
+.rc-mission-line {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: .7rem;
+  border-left: 1px solid var(--rc-line);
+  padding-left: 1.25rem;
 }
-.rc-orbit-ring, .rc-orbit-core, .rc-orbit-scan, .rc-orbit-node {
-  position: absolute;
-  border-radius: 50%;
+.rc-mission-line strong {
+  font: 600 .76rem/1.4 "IBM Plex Mono", "Cascadia Code", monospace;
+  color: var(--rc-text);
 }
-.rc-orbit-ring { inset: 4%; border: 1px solid #354151; }
-.rc-orbit-ring::before, .rc-orbit-ring::after {
+.rc-mission-line span {
+  color: var(--rc-muted);
+  font-size: .8rem;
+}
+.rc-signal {
+  height: 2px;
+  background: var(--rc-line);
+  overflow: hidden;
+}
+.rc-signal::after {
   content: "";
-  position: absolute;
-  border: 1px solid #222b37;
-  border-radius: inherit;
-}
-.rc-orbit-ring::before { inset: 18%; }
-.rc-orbit-ring::after { inset: 36%; border-style: dashed; }
-.rc-orbit-core {
-  inset: 43%;
+  display: block;
+  width: 28%;
+  height: 100%;
   background: var(--rc-accent);
-  box-shadow: 0 0 30px rgba(239,68,68,.42);
+  animation: rc-signal 2.8s ease-in-out infinite;
 }
-.rc-orbit-scan {
-  inset: 4%;
-  background: conic-gradient(from 30deg, transparent 0 78%, rgba(239,68,68,.18), transparent 96%);
-  animation: rc-scan 8s linear infinite;
-}
-.rc-orbit-node {
-  width: 12px; height: 12px; left: 14%; top: 32%;
-  background: var(--rc-text);
-  border: 3px solid var(--rc-accent);
-  box-shadow: 0 0 0 6px rgba(239,68,68,.1);
-  animation: rc-pulse 2.5s ease-in-out infinite;
-}
-.rc-crosshair::before, .rc-crosshair::after {
-  content: "";
-  position: absolute;
-  background: #29313d;
-}
-.rc-crosshair::before { width: 100%; height: 1px; left: 0; top: 50%; }
-.rc-crosshair::after { width: 1px; height: 100%; top: 0; left: 50%; }
 
 .rc-status {
   display: inline-flex;
@@ -285,54 +300,54 @@ a:focus-visible, button:focus-visible, input:focus-visible,
 .rc-flow {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 1px;
-  background: var(--rc-line);
-  border: 1px solid var(--rc-line);
-  border-radius: var(--rc-radius);
-  overflow: hidden;
+  gap: 1.5rem;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--rc-line);
   margin: .5rem 0 1.5rem;
 }
-.rc-flow-step { background: #0d1219; padding: 1rem; min-height: 120px; }
+.rc-flow-step { background: transparent; padding: 1rem 0; min-height: 110px; }
 .rc-flow-step b { display: block; color: var(--rc-text); margin: .45rem 0 .3rem; }
 .rc-flow-step span { color: var(--rc-muted); font-size: .86rem; }
 .rc-flow-index { color: var(--rc-accent) !important; font: 650 .68rem/1 "IBM Plex Mono", monospace; }
 
-.rc-card {
-  border: 1px solid var(--rc-line);
-  border-radius: var(--rc-radius);
-  background: rgba(16,21,29,.84);
-  padding: 1rem 1.05rem;
-  height: 100%;
+.rc-action {
+  min-height: 132px;
+  padding: 1rem 0 .8rem;
+  border-top: 1px solid var(--rc-line-strong);
 }
-.rc-card h3 { font-size: 1rem; margin: 0 0 .35rem; }
-.rc-card p { color: var(--rc-muted); font-size: .88rem; margin: 0; }
-.rc-card .rc-card-tag {
+.rc-action small {
   color: var(--rc-accent);
   font: 650 .68rem/1.2 "IBM Plex Mono", monospace;
-  text-transform: uppercase;
-  letter-spacing: .1em;
-  margin-bottom: .7rem;
 }
+.rc-action h3 { margin: .55rem 0 .35rem; font-size: 1.05rem; }
+.rc-action p { margin: 0; color: var(--rc-muted); font-size: .87rem; }
 
 .rc-step-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(240px, 1fr));
-  gap: .75rem;
+  gap: 1.5rem;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
-  padding: .1rem .1rem .65rem;
+  padding: .1rem 0 .65rem;
   scrollbar-color: var(--rc-accent) var(--rc-panel);
 }
 .rc-step-card {
   scroll-snap-align: start;
-  border: 1px solid var(--rc-line);
-  border-radius: var(--rc-radius);
-  background: #0d1219;
-  padding: 1rem;
-  min-height: 138px;
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  column-gap: .25rem;
+  align-content: start;
+  border: 0;
+  border-top: 1px solid var(--rc-line-strong);
+  border-radius: 0;
+  background: transparent;
+  padding: .9rem 0;
+  min-height: 120px;
 }
-.rc-step-card strong { display: block; margin: .45rem 0; }
-.rc-step-card p { margin: 0; color: var(--rc-muted); font-size: .88rem; }
+.rc-step-card .rc-flow-index { grid-row: 1 / span 2; padding-top: .2rem; }
+.rc-step-card strong { display: block; margin: 0 0 .4rem; }
+.rc-step-card p { grid-column: 2; margin: 0; color: var(--rc-muted); font-size: .88rem; }
 
 .rc-pin {
   display: grid;
@@ -356,16 +371,17 @@ a:focus-visible, button:focus-visible, input:focus-visible,
 .rc-pin p { color: var(--rc-muted); font-size: .82rem; margin: .25rem 0 0; }
 
 .rc-schematic {
-  min-height: 330px;
+  min-height: 240px;
   display: grid;
   place-items: center;
-  padding: 1.4rem;
-  border: 1px solid var(--rc-line);
-  border-radius: var(--rc-radius);
-  background: #0d1219;
+  padding: 1.4rem 0;
+  border: 0;
+  border-top: 1px solid var(--rc-line);
+  border-bottom: 1px solid var(--rc-line);
+  background: transparent;
   overflow-x: auto;
 }
-.rc-schematic svg { width: 100%; max-height: 430px; }
+.rc-schematic img { width: min(100%, 760px); min-height: 120px; object-fit: contain; }
 
 .rc-safety {
   border-left: 3px solid var(--rc-warn);
@@ -392,14 +408,41 @@ a:focus-visible, button:focus-visible, input:focus-visible,
 .rc-brand svg, .rc-brand img { display: block; width: 100%; height: auto; }
 .rc-sidebar-meta p { margin: .25rem 0; color: var(--rc-muted); font-size: .76rem; }
 
-@keyframes rc-scan { to { transform: rotate(360deg); } }
-@keyframes rc-pulse { 50% { transform: scale(.76); opacity: .7; } }
+.rc-events { border-top: 1px solid var(--rc-line); }
+.rc-event {
+  display: grid;
+  grid-template-columns: 5rem minmax(150px, .35fr) minmax(0, 1fr);
+  gap: 1rem;
+  padding: .75rem 0;
+  border-bottom: 1px solid var(--rc-line);
+}
+.rc-event time {
+  color: var(--rc-faint);
+  font: 600 .7rem/1.5 "IBM Plex Mono", monospace;
+}
+.rc-event strong {
+  color: var(--rc-text);
+  font: 600 .75rem/1.5 "IBM Plex Mono", monospace;
+}
+.rc-event p { margin: 0; color: var(--rc-muted); font-size: .82rem; overflow-wrap: anywhere; }
+
+/* Native motion keeps the console dependency-free and survives Streamlit reruns. */
+@keyframes rc-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes rc-signal {
+  0%, 100% { transform: translateX(-110%); opacity: .25; }
+  50% { transform: translateX(360%); opacity: 1; }
+}
 
 @media (max-width: 900px) {
   [data-testid="stMainBlockContainer"] { padding-inline: 1rem; padding-top: 1.2rem; }
   .rc-hero { grid-template-columns: 1fr; min-height: auto; }
-  .rc-orbit { width: min(74vw, 290px); }
+  .rc-mission-line { border-left: 0; border-top: 1px solid var(--rc-line); padding: 1rem 0 0; }
   .rc-flow { grid-template-columns: 1fr 1fr; }
+  .rc-event { grid-template-columns: 4rem 1fr; }
+  .rc-event p { grid-column: 2; }
   .rc-page-head h1 { font-size: clamp(2.2rem, 12vw, 4rem); }
 }
 
@@ -428,6 +471,7 @@ NAV_ITEMS = (
     ("Motor", "Motor", "pages/3_Motor.py", ":material/local_fire_department:"),
     ("Flight", "Vuelo", "pages/4_Flight.py", ":material/rocket_launch:"),
     ("History", "Historial", "pages/5_History.py", ":material/history:"),
+    ("Agent", "Agente", "pages/6_Agent.py", ":material/terminal:"),
 )
 
 
@@ -438,6 +482,13 @@ def is_spanish() -> bool:
 def tr(english: str, spanish: str) -> str:
     """Return copy in the language selected for the current session."""
     return spanish if is_spanish() else english
+
+
+def _persist_language(widget_key: str) -> None:
+    """Copy the page-scoped widget value to a key Streamlit will not clean up."""
+    st.session_state["rc_language"] = (
+        "Español" if st.session_state.get(widget_key) == "ES" else "English"
+    )
 
 
 _PLOT_TRANSLATIONS = {
@@ -518,10 +569,19 @@ def setup_page(active: str) -> None:
             f'<div class="rc-brand"><img src="data:image/svg+xml;base64,{logo_data}" '
             'alt="Rocketry Console"></div>'
         )
-        st.selectbox(
+        if "rc_language" not in st.session_state:
+            st.session_state["rc_language"] = "English"
+        language_key = f"_rc_language_input_{active.lower()}"
+        if st.session_state.get(language_key) not in {"EN", "ES"}:
+            st.session_state[language_key] = "ES" if is_spanish() else "EN"
+        st.caption("LANGUAGE / IDIOMA")
+        st.segmented_control(
             "Language / Idioma",
-            ("English", "Español"),
-            key="rc_language",
+            ("EN", "ES"),
+            key=language_key,
+            on_change=_persist_language,
+            args=(language_key,),
+            label_visibility="collapsed",
         )
         st.caption(tr("ENGINEERING WORKSTATION", "ESTACIÓN DE INGENIERÍA"))
         for english, spanish, path, icon in NAV_ITEMS:
@@ -561,14 +621,6 @@ def page_header(kicker: str, title: str, description: str) -> None:
 
 def section_title(title: str) -> None:
     st.html(f'<h2 class="rc-section-title">{escape(title)}</h2>')
-
-
-def card(tag: str, title: str, body: str) -> str:
-    return (
-        '<div class="rc-card">'
-        f'<div class="rc-card-tag">{escape(tag)}</div>'
-        f"<h3>{escape(title)}</h3><p>{escape(body)}</p></div>"
-    )
 
 
 def style_plotly(fig, *, height: int | None = None):
@@ -611,3 +663,9 @@ def themed_schematic(svg: bytes | str) -> str:
         .replace("fill:black", "fill:#d7dee8")
         .replace('font-family="sans"', 'font-family="Aptos, Segoe UI, sans-serif"')
     )
+
+
+def schematic_data_uri(svg: bytes | str) -> str:
+    """Return a sanitized data URI so Streamlit cannot strip inline SVG nodes."""
+    themed = themed_schematic(svg).encode()
+    return "data:image/svg+xml;base64," + base64.b64encode(themed).decode()

@@ -26,7 +26,15 @@ async def command(socket, message_id: int, method: str, params: dict | None = No
             return response.get("result", {})
 
 
-async def capture(cdp_port: int, url: str, output: Path, width: int, height: int, wait_s: float):
+async def capture(
+    cdp_port: int,
+    url: str,
+    output: Path,
+    width: int,
+    height: int,
+    wait_s: float,
+    click_text: str | None,
+):
     request = urllib.request.Request(
         f"http://127.0.0.1:{cdp_port}/json/new?{url}",
         method="PUT",
@@ -44,9 +52,24 @@ async def capture(cdp_port: int, url: str, output: Path, width: int, height: int
         )
         await command(socket, 3, "Page.navigate", {"url": url})
         await asyncio.sleep(wait_s)
+        message_id = 4
+        if click_text:
+            text_literal = json.dumps(click_text)
+            expression = (
+                "Array.from(document.querySelectorAll('button,[role=\"tab\"],a'))"
+                f".find(el => el.innerText.trim().includes({text_literal}))?.click()"
+            )
+            await command(
+                socket,
+                message_id,
+                "Runtime.evaluate",
+                {"expression": expression, "returnByValue": True},
+            )
+            message_id += 1
+            await asyncio.sleep(2)
         result = await command(
             socket,
-            4,
+            message_id,
             "Page.captureScreenshot",
             {"format": "png", "captureBeyondViewport": False},
         )
@@ -61,8 +84,19 @@ def main():
     parser.add_argument("--width", type=int, default=1440)
     parser.add_argument("--height", type=int, default=1200)
     parser.add_argument("--wait", type=float, default=6)
+    parser.add_argument("--click-text")
     args = parser.parse_args()
-    asyncio.run(capture(args.cdp_port, args.url, args.output, args.width, args.height, args.wait))
+    asyncio.run(
+        capture(
+            args.cdp_port,
+            args.url,
+            args.output,
+            args.width,
+            args.height,
+            args.wait,
+            args.click_text,
+        )
+    )
 
 
 if __name__ == "__main__":

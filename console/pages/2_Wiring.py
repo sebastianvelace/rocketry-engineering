@@ -90,8 +90,11 @@ with tab_connect:
     diagram_col, connections_col = st.columns([1.55, 1])
     with diagram_col:
         st.subheader(T("Circuit topology", "Topología del circuito"))
-        svg_text = ui.themed_schematic(svg)
-        st.html(f'<div class="rc-schematic">{svg_text}</div>')
+        svg_uri = ui.schematic_data_uri(svg)
+        st.html(
+            f'<div class="rc-schematic"><img src="{svg_uri}" '
+            f'alt="{escape(T("Circuit topology", "Topología del circuito"))}"></div>'
+        )
         st.caption(T("Signal flows from left to right. Ground and shared nodes branch vertically.", "La señal fluye de izquierda a derecha. Tierra y nodos compartidos se ramifican verticalmente."))
 
     with connections_col:
@@ -109,7 +112,7 @@ with tab_connect:
                 </div>
                 """
             )
-        st.html('<div class="rc-card">' + "".join(pin_html) + "</div>")
+        st.html('<div class="rc-pin-list">' + "".join(pin_html) + "</div>")
 
 with tab_verify:
     st.subheader(T("Pre-power inspection", "Inspección antes de energizar"))

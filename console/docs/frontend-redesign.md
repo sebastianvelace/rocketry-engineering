@@ -32,9 +32,9 @@ only for real positive system state.
 
 ## Signature
 
-Home contains one animated orbital telemetry field. Its motion communicates a
-live system scan and is disabled by `prefers-reduced-motion`. No other
-perpetual decorative animation competes with it.
+Home uses a restrained mission line: `measure → verify → decide`. A two-pixel
+signal sweep communicates live status without the synthetic radar illustration
+used in the first redesign.
 
 The wordmark and icon are local SVG assets. They have no network dependency.
 
@@ -51,10 +51,11 @@ Context -> inputs -> execution -> result -> save or continue
 - Motor: Bound, Simulate, Evaluate
 - Flight: Select, Define, Check
 - History: Inspect, Compare, Manage
+- Agent: Observe terminal work, inspect the latest persisted result
 
-Wiring uses horizontally scrollable, snap-aligned process cards on narrow
-screens. The tabs separate preparation, physical assembly and the pre-power
-inspection, which prevents the diagram from competing with the checklist.
+Wiring uses horizontally scrollable, snap-aligned steps on narrow screens. On
+wider screens these are open steps separated by rules, not cards.
+The tabs separate preparation, physical assembly and the pre-power inspection.
 
 The `Language / Idioma` selector keeps English or Spanish across every page in
 the current browser session. Navigation, workflows, validation messages,
@@ -66,6 +67,9 @@ tables and plot labels all follow the same selection.
 - Focus-visible outlines use the signal-red accent.
 - Button, input and muted-text contrast were checked in browser captures.
 - Motion and smooth scrolling honor reduced-motion preferences.
+- Page entrance, signal and button feedback use native CSS. GSAP was evaluated
+  but rejected here because the existing Streamlit app has no JavaScript build
+  pipeline and these simple effects do not justify a runtime dependency.
 - Dynamic HTML strings are escaped before insertion.
 - Status dots carry adjacent text and never communicate state alone.
 - Destructive run deletion requires explicit confirmation.
@@ -94,6 +98,8 @@ Decisions:
   navigation cover the actual operator need.
 - The motion treatment uses a small local SVG/CSS system with a reduced-motion
   fallback. It communicates state rather than adding decorative movement.
+- Generic card containers were removed from workflow steps, metrics, forms and
+  Home actions. Rules, spacing and typography now carry the hierarchy.
 
 ## Shared implementation
 
@@ -102,7 +108,7 @@ Decisions:
 - global CSS and responsive rules
 - sidebar navigation and live status
 - page and section headers
-- reusable cards and process strips
+- open action rows and process strips
 - Plotly styling
 - dark schematic transformation
 

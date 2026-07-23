@@ -22,7 +22,7 @@ ui.setup_page("Home")
 T = ui.tr
 
 ports = blocks.find_ports()
-port_label = escape(ports[0]) if ports else "ESP32 offline"
+port_label = escape(ports[0]) if ports else T("ESP32 offline", "ESP32 desconectada")
 port_state = "ok" if ports else "off"
 
 st.html(
@@ -39,12 +39,10 @@ st.html(
           <span class="rc-status-dot"></span><span>{port_label}</span>
         </div>
       </div>
-      <div class="rc-orbit" aria-label="Animated system telemetry">
-        <div class="rc-crosshair"></div>
-        <div class="rc-orbit-ring"></div>
-        <div class="rc-orbit-scan"></div>
-        <div class="rc-orbit-core"></div>
-        <div class="rc-orbit-node"></div>
+      <div class="rc-mission-line">
+        <div class="rc-signal" aria-hidden="true"></div>
+        <strong>{T("MEASURE → VERIFY → DECIDE", "MEDIR → VERIFICAR → DECIDIR")}</strong>
+        <span>{T("One result is a hypothesis. Agreement across methods turns it into evidence.", "Un resultado es una hipótesis. La concordancia entre métodos lo convierte en evidencia.")}</span>
       </div>
     </section>
     """
@@ -82,13 +80,13 @@ st.html(
 ui.section_title(T("Choose your next action", "Elige tu siguiente acción"))
 left, middle, right = st.columns([1.15, 1, 1])
 with left:
-    st.html(ui.card(T("Hardware", "Hardware"), T("Capture a signal", "Captura una señal"), T("Read one complete serial block, detect its measurement type and inspect the raw response.", "Lee un bloque serial completo, detecta el tipo de medición e inspecciona la respuesta cruda.")))
+    st.html(f'<div class="rc-action"><small>01 / {T("HARDWARE", "HARDWARE")}</small><h3>{T("Capture a signal", "Captura una señal")}</h3><p>{T("Read one serial block and inspect the raw response.", "Lee un bloque serial e inspecciona la respuesta cruda.")}</p></div>')
     st.page_link("pages/1_Bench.py", label=T("Open Bench", "Abrir banco"), icon=":material/monitor_heart:", width="stretch")
 with middle:
-    st.html(ui.card(T("Setup", "Montaje"), T("Wire the circuit", "Cablea el circuito"), T("Follow a guided pin-by-pin build sequence before connecting power or capturing data.", "Sigue una secuencia pin a pin antes de alimentar o capturar datos.")))
+    st.html(f'<div class="rc-action"><small>02 / {T("SETUP", "MONTAJE")}</small><h3>{T("Wire the circuit", "Cablea el circuito")}</h3><p>{T("Follow the pin sequence before applying power.", "Sigue la secuencia de pines antes de aplicar alimentación.")}</p></div>')
     st.page_link("pages/2_Wiring.py", label=T("Open Wiring", "Abrir cableado"), icon=":material/electrical_services:", width="stretch")
 with right:
-    st.html(ui.card(T("Analysis", "Análisis"), T("Run a simulation", "Ejecuta una simulación"), T("Sweep viable BATES grains, then evaluate the complete vehicle in OpenRocket.", "Explora granos BATES viables y evalúa el vehículo completo en OpenRocket.")))
+    st.html(f'<div class="rc-action"><small>03 / {T("ANALYSIS", "ANÁLISIS")}</small><h3>{T("Run a simulation", "Ejecuta una simulación")}</h3><p>{T("Explore the motor, then evaluate the complete vehicle.", "Explora el motor y luego evalúa el vehículo completo.")}</p></div>')
     c1, c2 = st.columns(2)
     c1.page_link("pages/3_Motor.py", label="Motor", icon=":material/local_fire_department:", width="stretch")
     c2.page_link("pages/4_Flight.py", label=T("Flight", "Vuelo"), icon=":material/rocket_launch:", width="stretch")

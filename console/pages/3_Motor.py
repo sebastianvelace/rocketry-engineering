@@ -245,7 +245,7 @@ with tab_table:
         },
     )
 
-with st.container(key="motor-save", border=True):
+with st.container(key="motor-save"):
     st.subheader(T("Save this sweep", "Guardar este barrido"))
     note = st.text_input(T("Run note", "Nota de la corrida"), key="motor_note", placeholder=T("Example: baseline E-class envelope", "Ejemplo: espacio base clase E"))
     if st.button(T("Save to History", "Guardar en Historial"), icon=":material/save:", width="stretch"):

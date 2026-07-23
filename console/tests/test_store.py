@@ -30,10 +30,12 @@ class StoreTests(unittest.TestCase):
         summary = store.list_runs()[0]
         self.assertEqual(summary.id, run_id)
         self.assertEqual(summary.rows, [])
+        self.assertEqual(store.latest_run().id, run_id)
 
         store.delete_run(run_id)
         self.assertEqual(store.count_runs(), 0)
         self.assertIsNone(store.get_run(run_id))
+        self.assertIsNone(store.latest_run())
 
 
 if __name__ == "__main__":

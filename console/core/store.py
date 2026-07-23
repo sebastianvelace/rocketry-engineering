@@ -80,6 +80,25 @@ def list_runs(kind: str | None = None) -> list[RunRecord]:
         ]
 
 
+def latest_run() -> RunRecord | None:
+    """Return the newest run summary with a bounded query."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id, created_at, kind, meta_json, note FROM runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    if row is None:
+        return None
+    return RunRecord(
+        id=row[0],
+        created_at=row[1],
+        kind=row[2],
+        meta=json.loads(row[3]),
+        columns=[],
+        rows=[],
+        note=row[4],
+    )
+
+
 def get_run(run_id: int) -> RunRecord | None:
     with _connect() as conn:
         cur = conn.execute(

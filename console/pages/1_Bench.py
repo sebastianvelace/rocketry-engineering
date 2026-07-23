@@ -45,7 +45,7 @@ st.html(
 )
 
 ui.section_title(T("Connection", "Conexión"))
-with st.container(key="bench-connection", border=True):
+with st.container(key="bench-connection"):
     c1, c2, c3 = st.columns([2, 1, 1])
     with c1:
         if not ports:
@@ -170,7 +170,7 @@ if stats:
     for idx, (label, value) in enumerate(stats.items()):
         metric_cols[idx % len(metric_cols)].metric(ui.stat_label(label), ui.stat_value(value))
 
-with st.container(key="bench-save", border=True):
+with st.container(key="bench-save"):
     st.subheader(T("Save this capture", "Guardar esta captura"))
     note = st.text_input(
         T("Run note", "Nota de la corrida"),
