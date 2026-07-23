@@ -9,7 +9,7 @@ CORE = Path(__file__).resolve().parent.parent / "core"
 sys.path.insert(0, str(CORE))
 
 import agent_feed  # noqa: E402
-import store  # noqa: E402
+import services  # noqa: E402
 import ui  # noqa: E402
 
 st.set_page_config(
@@ -20,6 +20,7 @@ st.set_page_config(
 )
 ui.setup_page("Agent")
 T = ui.tr
+history_service = services.HistoryService()
 ui.page_header(
     T("Local activity bridge", "Puente local de actividad"),
     T("Agent", "Agente"),
@@ -43,7 +44,7 @@ st.code(
 @st.fragment(run_every=2.0)
 def live_activity() -> None:
     events = agent_feed.read_events(80)
-    latest_run = store.latest_run()
+    latest_run = history_service.latest()
 
     status_col, run_col = st.columns(2)
     if events:

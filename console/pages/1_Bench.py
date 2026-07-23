@@ -9,7 +9,7 @@ sys.path.insert(0, str(CORE))
 
 import blocks  # noqa: E402
 import plots  # noqa: E402
-import store  # noqa: E402
+import services  # noqa: E402
 import ui  # noqa: E402
 
 st.set_page_config(
@@ -32,7 +32,12 @@ ui.page_header(
 if "block" not in st.session_state:
     st.session_state.block = None
 
-ports = blocks.find_ports()
+bench_service = services.BenchService()
+try:
+    ports = bench_service.list_ports()
+except services.ServiceError as exc:
+    ports = []
+    st.error(str(exc))
 
 st.html(
     f"""
@@ -99,27 +104,32 @@ if capture_clicked:
             "Esperando el siguiente marcador `# BLOCK` y un marcador `# END` completo.",
         ))
         try:
-            block = blocks.open_and_read(port, baud=int(baud), timeout_s=float(timeout_s))
-        except (OSError, ValueError) as exc:
-            status.update(label=T("Serial capture failed", "La captura serial falló"), state="error")
-            st.error(T(f"Could not read {port}: {exc}", f"No se pudo leer {port}: {exc}"))
-            block = None
-        if block is None:
-            status.update(label=T("No complete block received", "No se recibió un bloque completo"), state="error")
-            st.error(T(
-                "Check the flashed firmware and confirm that it emits the shared block protocol.",
-                "Revisa el firmware cargado y confirma que emita el protocolo de bloques compartido.",
-            ))
-        else:
+            capture = bench_service.capture(
+                services.BenchCaptureRequest(
+                    port=port,
+                    baud=int(baud),
+                    timeout_s=float(timeout_s),
+                )
+            )
+            block = capture.block
             st.session_state.block = block
-            kind = plots.detect_kind(block)
             status.update(
                 label=T(
-                    f"Captured {len(block.rows)} rows as {kind}",
-                    f"Se capturaron {len(block.rows)} filas como {kind}",
+                    f"Captured {len(block.rows)} rows as {capture.detected_kind}",
+                    f"Se capturaron {len(block.rows)} filas como {capture.detected_kind}",
                 ),
                 state="complete",
             )
+        except services.ServiceError as exc:
+            block = None
+            status.update(label=T("Serial capture failed", "La captura serial falló"), state="error")
+            if exc.code == "capture_timeout":
+                st.error(T(
+                    "No complete block was received. Check the flashed firmware and confirm that it emits the shared block protocol.",
+                    "No se recibió un bloque completo. Revisa el firmware cargado y confirma que emita el protocolo de bloques compartido.",
+                ))
+            else:
+                st.error(str(exc))
 
 block = st.session_state.block
 
@@ -179,6 +189,9 @@ with st.container(key="bench-save"):
         help=T("A specific note makes comparisons easier later.", "Una nota específica facilita las comparaciones posteriores."),
     )
     if st.button(T("Save to History", "Guardar en Historial"), icon=":material/save:", width="stretch"):
-        rid = store.save_run(kind, block.meta, block.columns, block.rows, note=note.strip())
+        rid = bench_service.save(
+            services.BenchCapture(block=block, detected_kind=kind),
+            note=note,
+        )
         st.success(T(f"Run #{rid} saved to History.", f"Corrida #{rid} guardada en Historial."))
         st.page_link("pages/5_History.py", label=T("Open History", "Abrir Historial"), icon=":material/history:")

@@ -8,9 +8,8 @@ import streamlit as st
 CORE = Path(__file__).resolve().parent.parent / "core"
 sys.path.insert(0, str(CORE))
 
-import diagrams  # noqa: E402
+import services  # noqa: E402
 import ui  # noqa: E402
-import wiring_guides  # noqa: E402
 
 st.set_page_config(
     page_title="Wiring | Rocketry Console",
@@ -33,16 +32,19 @@ def guide_text(guide: dict, field: str):
     return guide.get(f"{field}_es", guide[field]) if ui.is_spanish() else guide[field]
 
 
-friendly_to_key = {guide_text(guide, "short"): key for key, guide in wiring_guides.GUIDES.items()}
+wiring_service = services.WiringService()
+circuits = {key: wiring_service.get(key) for key in wiring_service.list_keys()}
+friendly_to_key = {guide_text(circuit.guide, "short"): key for key, circuit in circuits.items()}
 selected_short = st.radio(
     T("What are you connecting?", "¿Qué vas a conectar?"),
     list(friendly_to_key),
     horizontal=True,
-    captions=[guide_text(wiring_guides.GUIDES[key], "use_for") for key in friendly_to_key.values()],
+    captions=[guide_text(circuits[key].guide, "use_for") for key in friendly_to_key.values()],
 )
 circuit_name = friendly_to_key[selected_short]
-guide = wiring_guides.GUIDES[circuit_name]
-svg, pins = diagrams.CIRCUITS[circuit_name]()
+circuit = circuits[circuit_name]
+guide = circuit.guide
+svg, pins = circuit.svg, circuit.pins
 
 st.html(
     f"""

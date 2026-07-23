@@ -8,8 +8,7 @@ CORE = Path(__file__).resolve().parent.parent / "core"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(CORE))
 
-from adapters import openrocket  # noqa: E402
-import store  # noqa: E402
+import services  # noqa: E402
 import ui  # noqa: E402
 
 st.set_page_config(
@@ -20,6 +19,7 @@ st.set_page_config(
 )
 ui.setup_page("Flight")
 T = ui.tr
+flight_service = services.FlightService()
 ui.page_header(
     T("Six-degree flight model", "Modelo de vuelo de seis grados"),
     T("Flight", "Vuelo"),
@@ -131,10 +131,15 @@ if submitted:
             "Construyendo el vehículo, iniciando una JVM aislada y ejecutando la simulación de vuelo.",
         ))
         try:
-            result = openrocket.fly(eng_path, architecture=architecture, fin=fin, wind=wind)
+            result = flight_service.run(
+                eng_path,
+                architecture=architecture,
+                fin=fin,
+                wind=wind,
+            )
             st.session_state.flight_result = result
             status.update(label=T("Flight simulation complete", "Simulación de vuelo completada"), state="complete")
-        except openrocket.OpenRocketError as exc:
+        except services.ServiceError as exc:
             st.session_state.flight_result = None
             status.update(label=T("Flight simulation failed", "La simulación de vuelo falló"), state="error")
             st.error(str(exc))
@@ -172,13 +177,7 @@ with st.container(key="flight-save"):
     st.subheader(T("Save this flight", "Guardar este vuelo"))
     note = st.text_input(T("Run note", "Nota de la corrida"), key="flight_note", placeholder=T("Example: E_sintubo, baseline fins, 2 m/s wind", "Ejemplo: E_sintubo, aletas base, viento de 2 m/s"))
     if st.button(T("Save to History", "Guardar en Historial"), icon=":material/save:", width="stretch"):
-        rid = store.save_run(
-            "FLIGHT",
-            {key: value for key, value in result.items() if key != "warn"},
-            ["metric", "value"],
-            [[key, value] for key, value in result.items() if isinstance(value, (int, float))],
-            note=note.strip(),
-        )
+        rid = flight_service.save(result, note=note)
         st.success(T(f"Flight #{rid} saved to History.", f"Vuelo #{rid} guardado en Historial."))
 
 st.caption(T(

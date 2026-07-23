@@ -8,8 +8,7 @@ import streamlit as st
 CORE = Path(__file__).resolve().parent / "core"
 sys.path.insert(0, str(CORE))
 
-import blocks  # noqa: E402
-import store  # noqa: E402
+import services  # noqa: E402
 import ui  # noqa: E402
 
 st.set_page_config(
@@ -21,7 +20,12 @@ st.set_page_config(
 ui.setup_page("Home")
 T = ui.tr
 
-ports = blocks.find_ports()
+bench_service = services.BenchService()
+history_service = services.HistoryService()
+try:
+    ports = bench_service.list_ports()
+except services.ServiceError:
+    ports = []
 port_label = escape(ports[0]) if ports else T("ESP32 offline", "ESP32 desconectada")
 port_state = "ok" if ports else "off"
 
@@ -55,7 +59,7 @@ m1.metric(
     T("Connected", "Conectada") if ports else T("Not detected", "No detectada"),
     help=", ".join(ports) if ports else T("Connect by USB and check permissions.", "Conecta por USB y verifica los permisos."),
 )
-m2.metric(T("Saved runs", "Corridas guardadas"), store.count_runs())
+m2.metric(T("Saved runs", "Corridas guardadas"), history_service.count())
 m3.metric(
     "openMotor",
     T("Ready", "Listo") if (Path.home() / "openMotor" / ".venv" / "bin" / "python").exists() else T("Unavailable", "No disponible"),

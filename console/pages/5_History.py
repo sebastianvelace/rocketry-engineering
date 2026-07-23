@@ -11,6 +11,7 @@ sys.path.insert(0, str(CORE))
 
 import blocks  # noqa: E402
 import plots  # noqa: E402
+import services  # noqa: E402
 import store  # noqa: E402
 import ui  # noqa: E402
 
@@ -22,6 +23,7 @@ st.set_page_config(
 )
 ui.setup_page("History")
 T = ui.tr
+history_service = services.HistoryService()
 ui.page_header(
     T("Run archive", "Archivo de corridas"),
     T("History", "Historial"),
@@ -38,20 +40,20 @@ def label_for(run: store.RunRecord) -> str:
 
 
 def numeric_columns(run: store.RunRecord) -> list[tuple[str, int]]:
-    """Return columns whose non-empty values are all numeric."""
-    if not run.rows:
-        return []
-    width = max(len(row) for row in run.rows)
-    names = run.columns or [T(f"column_{idx + 1}", f"columna_{idx + 1}") for idx in range(width)]
-    numeric = []
-    for idx in range(width):
-        values = [row[idx] for row in run.rows if len(row) > idx and row[idx] is not None]
-        if values and all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in values):
-            numeric.append((names[idx] if idx < len(names) else T(f"column_{idx + 1}", f"columna_{idx + 1}"), idx))
-    return numeric
+    columns = history_service.numeric_columns(run)
+    if run.columns or not ui.is_spanish():
+        return columns
+    return [(name.replace("column_", "columna_"), idx) for name, idx in columns]
 
 
-all_runs = store.list_runs()
+def get_or_none(run_id: int) -> store.RunRecord | None:
+    try:
+        return history_service.get(run_id)
+    except services.ServiceError:
+        return None
+
+
+all_runs = history_service.list()
 
 if not all_runs:
     st.info(
@@ -111,7 +113,7 @@ tab_view, tab_compare, tab_manage = st.tabs(
 with tab_view:
     labels = {label_for(run): run.id for run in filtered}
     selected_label = st.selectbox(T("Run", "Corrida"), list(labels))
-    run = store.get_run(labels[selected_label])
+    run = get_or_none(labels[selected_label])
 
     if run is None:
         st.error(T("The selected run no longer exists. Refresh History.", "La corrida seleccionada ya no existe. Actualiza Historial."))
@@ -124,7 +126,7 @@ with tab_view:
                 st.write(run.note)
             st.json(run.meta, expanded=False)
 
-            csv = pd.DataFrame(run.rows, columns=run.columns or None).to_csv(index=False)
+            csv = history_service.to_csv(run)
             st.download_button(
                 T("Export CSV", "Exportar CSV"),
                 csv,
@@ -178,7 +180,7 @@ with tab_compare:
     compare_labels = {label_for(run): run.id for run in same_kind}
     picked = st.multiselect(T("Runs to overlay", "Corridas para superponer"), list(compare_labels), max_selections=6)
 
-    loaded = [store.get_run(compare_labels[label]) for label in picked]
+    loaded = [get_or_none(compare_labels[label]) for label in picked]
     loaded = [run for run in loaded if run is not None]
 
     if loaded:
@@ -245,6 +247,6 @@ with tab_manage:
         disabled=not confirm,
     ):
         delete_id = delete_labels[delete_label]
-        store.delete_run(delete_id)
+        history_service.delete(delete_id)
         st.success(T(f"Run #{delete_id} deleted.", f"Corrida #{delete_id} eliminada."))
         st.rerun()

@@ -161,25 +161,36 @@ tools, and starts Codex with `sandbox=read-only` and
 
 ## Implementation phases
 
-### Phase 1: engineering service boundary
+### Phase 1: engineering service boundary — complete
 
 Move UI-independent behavior behind typed services:
 
 ```text
-SerialService
 BenchService
 WiringService
 MotorService
 FlightService
-RunService
+HistoryService
 ```
 
-Acceptance:
+Implemented in `core/services.py`. Streamlit now consumes these services, so
+the same contracts can be reused by MCP and the desktop gateway without
+importing a page or session state. The boundary includes:
 
-- existing tests and results remain equivalent;
-- no engineering operation depends on Streamlit session state;
-- long operations expose progress and cancellation; and
-- errors have stable codes.
+- typed capture, wiring and progress values;
+- thread-safe cooperative cancellation;
+- stable error codes such as `capture_timeout`, `motor_simulation_failed`,
+  `flight_simulation_failed` and `run_not_found`;
+- dependency injection for isolated contract tests; and
+- history serialization compatible with the existing SQLite records.
+
+All 28 automated checks pass, including every Streamlit page, bilingual
+navigation, diagram rendering, service contracts and existing adapters.
+
+Cancellation is checked before a subprocess starts and after it returns.
+True mid-process termination belongs in the gateway supervisor in Phase 3,
+where a process group can be interrupted and reaped without changing the
+trusted simulation adapters prematurely.
 
 ### Phase 2: Rocketry MCP
 

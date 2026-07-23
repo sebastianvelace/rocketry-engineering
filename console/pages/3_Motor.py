@@ -9,8 +9,7 @@ import streamlit as st
 CORE = Path(__file__).resolve().parent.parent / "core"
 sys.path.insert(0, str(CORE))
 
-from adapters import openmotor  # noqa: E402
-import store  # noqa: E402
+import services  # noqa: E402
 import ui  # noqa: E402
 
 st.set_page_config(
@@ -21,6 +20,7 @@ st.set_page_config(
 )
 ui.setup_page("Motor")
 T = ui.tr
+motor_service = services.MotorService()
 ui.page_header(
     T("Internal ballistics", "Balística interna"),
     "Motor",
@@ -119,10 +119,10 @@ if submitted:
             f"Evaluando {n_combos} geometrías candidatas en un subproceso aislado.",
         ))
         try:
-            result = openmotor.run_sweep(params)
+            result = motor_service.run(params)
             st.session_state.sweep_result = result
             status.update(label=T("Motor sweep complete", "Barrido de motor completado"), state="complete")
-        except openmotor.OpenMotorError as exc:
+        except services.ServiceError as exc:
             st.session_state.sweep_result = None
             status.update(label=T("Motor sweep failed", "El barrido de motor falló"), state="error")
             st.error(str(exc))
@@ -249,13 +249,7 @@ with st.container(key="motor-save"):
     st.subheader(T("Save this sweep", "Guardar este barrido"))
     note = st.text_input(T("Run note", "Nota de la corrida"), key="motor_note", placeholder=T("Example: baseline E-class envelope", "Ejemplo: espacio base clase E"))
     if st.button(T("Save to History", "Guardar en Historial"), icon=":material/save:", width="stretch"):
-        rid = store.save_run(
-            "MOTOR_SWEEP",
-            {key: value for key, value in result.items() if key != "rows"},
-            list(df.columns),
-            df.values.tolist(),
-            note=note.strip(),
-        )
+        rid = motor_service.save(result, note=note)
         st.success(T(f"Motor sweep #{rid} saved to History.", f"Barrido de motor #{rid} guardado en Historial."))
 
 st.caption(T(

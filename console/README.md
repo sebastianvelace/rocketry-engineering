@@ -7,6 +7,10 @@ comparison.
 The application is intentionally local-first. Serial devices, the openMotor
 environment and the OpenRocket JVM all run on the workstation.
 
+UI-independent engineering operations live in `core/services.py`. Streamlit
+is currently one client of that layer; the planned desktop application and
+both agent providers will call the same contracts.
+
 ## Product map
 
 | Module | Job |
