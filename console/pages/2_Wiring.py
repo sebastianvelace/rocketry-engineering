@@ -21,7 +21,14 @@ svg, pins = fn()
 col_diagram, col_table = st.columns([2, 1])
 
 with col_diagram:
-    st.image(svg, use_container_width=True)
+    # st.image() decodes bytes via PIL, which does not understand SVG -- it
+    # only handles raster formats (PNG/JPG). schemdraw emits SVG, so it has
+    # to be embedded directly as HTML instead.
+    svg_text = svg.decode() if isinstance(svg, (bytes, bytearray)) else svg
+    st.markdown(
+        f'<div style="width:100%">{svg_text}</div>',
+        unsafe_allow_html=True,
+    )
 
 with col_table:
     st.markdown("**Pin-to-pin connections**")
