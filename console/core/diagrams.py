@@ -26,7 +26,7 @@ def direct_jumper() -> tuple[bytes, list[dict]]:
 
     pins = [
         {"from": "ESP32 GPIO25 (DAC)", "to": "ESP32 GPIO34 (ADC)",
-         "how": "single jumper wire"},
+         "how": "single jumper wire", "how_es": "un cable jumper"},
     ]
     return svg, pins
 
@@ -46,11 +46,13 @@ def rc_filter(r_ohm: int = 220, c_uf: float = 10.0) -> tuple[bytes, list[dict]]:
 
     pins = [
         {"from": "ESP32 GPIO25 (DAC)", "to": f"Resistor leg 1 ({r_ohm} Ω)",
-         "how": "jumper wire"},
+         "to_es": f"Pata 1 de la resistencia ({r_ohm} Ω)", "how": "jumper wire", "how_es": "cable jumper"},
         {"from": f"Resistor leg 2 ({r_ohm} Ω)", "to": "node: ESP32 GPIO34 (ADC) AND capacitor + (long leg)",
-         "how": "shared breadboard row"},
+         "from_es": f"Pata 2 de la resistencia ({r_ohm} Ω)",
+         "to_es": "nodo: ESP32 GPIO34 (ADC) Y condensador + (pata larga)",
+         "how": "shared breadboard row", "how_es": "fila compartida de la protoboard"},
         {"from": "Capacitor − (short leg / stripe)", "to": "ESP32 GND",
-         "how": "jumper wire"},
+         "from_es": "Condensador - (pata corta / franja)", "how": "jumper wire", "how_es": "cable jumper"},
     ]
     return svg, pins
 
@@ -75,13 +77,18 @@ def imu_baro_i2c(imu_label: str = "MPU6050 (GY-521)",
 
     pins = [
         {"from": "ESP32 3.3V", "to": f"{imu_label} VCC AND {baro_label} VCC",
-         "how": "shared power rail (both are 3.3V modules)"},
+         "to_es": f"{imu_label} VCC Y {baro_label} VCC",
+         "how": "shared power rail (both are 3.3V modules)",
+         "how_es": "riel de alimentación compartido (ambos módulos son de 3.3 V)"},
         {"from": "ESP32 GND", "to": f"{imu_label} GND AND {baro_label} GND",
-         "how": "shared ground rail"},
+         "to_es": f"{imu_label} GND Y {baro_label} GND",
+         "how": "shared ground rail", "how_es": "riel de tierra compartido"},
         {"from": "ESP32 GPIO21 (SDA)", "to": f"{imu_label} SDA AND {baro_label} SDA",
-         "how": "shared I2C data bus"},
+         "to_es": f"{imu_label} SDA Y {baro_label} SDA",
+         "how": "shared I2C data bus", "how_es": "bus de datos I2C compartido"},
         {"from": "ESP32 GPIO22 (SCL)", "to": f"{imu_label} SCL AND {baro_label} SCL",
-         "how": "shared I2C clock bus"},
+         "to_es": f"{imu_label} SCL Y {baro_label} SCL",
+         "how": "shared I2C clock bus", "how_es": "bus de reloj I2C compartido"},
     ]
     return svg, pins
 
@@ -90,44 +97,4 @@ CIRCUITS = {
     "Direct jumper (Phase 1/2/4)": direct_jumper,
     "RC anti-aliasing filter (Phase 3)": rc_filter,
     "IMU + barometer I2C (future)": imu_baro_i2c,
-}
-
-
-CIRCUIT_GUIDES = {
-    "Direct jumper (Phase 1/2/4)": {
-        "short": "DAC loopback",
-        "purpose": "Send the ESP32 DAC output directly back into its ADC input.",
-        "use_for": "Sine, FFT, ADC timing and thrust replay captures.",
-        "parts": ["1 ESP32", "1 jumper wire", "1 USB data cable"],
-        "before": "Disconnect USB power before moving the jumper.",
-        "verify": [
-            "GPIO25 is the signal source (DAC).",
-            "GPIO34 is the measurement input (ADC).",
-            "No external voltage source is connected to GPIO34.",
-        ],
-    },
-    "RC anti-aliasing filter (Phase 3)": {
-        "short": "RC filter",
-        "purpose": "Place a first-order low-pass filter between the DAC and ADC.",
-        "use_for": "Step response and Bode response captures.",
-        "parts": ["1 ESP32", "1 × 220 Ω resistor", "1 × 10 µF capacitor", "Jumper wires", "Breadboard"],
-        "before": "Disconnect USB power and identify the capacitor polarity before wiring.",
-        "verify": [
-            "The capacitor long leg (+) shares the GPIO34 node.",
-            "The striped or short capacitor leg (-) goes to GND.",
-            "The resistor sits between GPIO25 and the GPIO34 node.",
-        ],
-    },
-    "IMU + barometer I2C (future)": {
-        "short": "I2C sensors",
-        "purpose": "Share one 3.3 V I2C bus between the IMU and barometer.",
-        "use_for": "Future inertial and atmospheric sensor integration.",
-        "parts": ["1 ESP32", "1 MPU6050 / GY-521", "1 BME280", "Jumper wires", "Breadboard"],
-        "before": "Confirm both sensor modules accept 3.3 V logic and power.",
-        "verify": [
-            "Both sensors share 3.3 V and GND.",
-            "Both SDA pins connect to GPIO21.",
-            "Both SCL pins connect to GPIO22.",
-        ],
-    },
 }

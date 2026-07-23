@@ -19,10 +19,14 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 ui.setup_page("Bench")
+T = ui.tr
 ui.page_header(
-    "Hardware capture",
-    "Bench",
-    "Connect the ESP32, capture one complete measurement block and inspect the signal before saving it.",
+    T("Hardware capture", "Captura de hardware"),
+    T("Bench", "Banco de pruebas"),
+    T(
+        "Connect the ESP32, capture one complete measurement block and inspect the signal before saving it.",
+        "Conecta la ESP32, captura un bloque completo e inspecciona la señal antes de guardarla.",
+    ),
 )
 
 if "block" not in st.session_state:
@@ -31,50 +35,57 @@ if "block" not in st.session_state:
 ports = blocks.find_ports()
 
 st.html(
-    """
+    f"""
     <div class="rc-step-strip">
-      <div class="rc-step-card"><span class="rc-flow-index">01</span><strong>Connect</strong><p>Use Wiring to verify the circuit, then connect the ESP32 by USB.</p></div>
-      <div class="rc-step-card"><span class="rc-flow-index">02</span><strong>Capture</strong><p>Select the port and read one complete block from <code># BLOCK</code> to <code># END</code>.</p></div>
-      <div class="rc-step-card"><span class="rc-flow-index">03</span><strong>Review</strong><p>Check the detected measurement, chart and derived values before saving.</p></div>
+      <div class="rc-step-card"><span class="rc-flow-index">01</span><strong>{T("Connect", "Conecta")}</strong><p>{T("Use Wiring to verify the circuit, then connect the ESP32 by USB.", "Usa Cableado para verificar el circuito y conecta la ESP32 por USB.")}</p></div>
+      <div class="rc-step-card"><span class="rc-flow-index">02</span><strong>{T("Capture", "Captura")}</strong><p>{T("Select the port and read one complete block from", "Selecciona el puerto y lee un bloque completo desde")} <code># BLOCK</code> {T("to", "hasta")} <code># END</code>.</p></div>
+      <div class="rc-step-card"><span class="rc-flow-index">03</span><strong>{T("Review", "Revisa")}</strong><p>{T("Check the detected measurement, chart and derived values before saving.", "Revisa la medición detectada, la gráfica y los valores derivados antes de guardar.")}</p></div>
     </div>
     """
 )
 
-ui.section_title("Connection")
+ui.section_title(T("Connection", "Conexión"))
 with st.container(key="bench-connection", border=True):
     c1, c2, c3 = st.columns([2, 1, 1])
     with c1:
         if not ports:
             st.error(
-                "No serial device detected. Reconnect the USB cable, confirm the board is powered, "
-                "and verify that your user can access the serial port.",
+                T(
+                    "No serial device detected. Reconnect the USB cable, confirm the board is powered, "
+                    "and verify that your user can access the serial port.",
+                    "No se detectó un dispositivo serial. Reconecta el cable USB, confirma que la placa tiene alimentación "
+                    "y verifica que tu usuario pueda acceder al puerto serial.",
+                ),
                 icon=":material/usb_off:",
             )
         port = st.selectbox(
-            "Serial port",
-            ports or ["No port available"],
+            T("Serial port", "Puerto serial"),
+            ports or [T("No port available", "No hay puerto disponible")],
             disabled=not ports,
-            help="The console checks ttyUSB and ttyACM devices reported by the operating system.",
+            help=T(
+                "The console checks USB serial devices reported by the operating system.",
+                "La consola revisa los dispositivos seriales USB reportados por el sistema operativo.",
+            ),
         )
     with c2:
         baud = st.number_input(
-            "Baud rate",
+            T("Baud rate", "Velocidad en baudios"),
             value=blocks.DEFAULT_BAUD,
             min_value=1_200,
             step=9_600,
-            help="Must match the firmware serial rate.",
+            help=T("Must match the firmware serial rate.", "Debe coincidir con la velocidad serial del firmware."),
         )
     with c3:
         timeout_s = st.number_input(
-            "Capture timeout (s)",
+            T("Capture timeout (s)", "Tiempo límite de captura (s)"),
             value=15,
             min_value=2,
             max_value=120,
-            help="Maximum wait for a complete block.",
+            help=T("Maximum wait for a complete block.", "Espera máxima por un bloque completo."),
         )
 
     capture_clicked = st.button(
-        "Capture block",
+        T("Capture block", "Capturar bloque"),
         type="primary",
         icon=":material/sensors:",
         disabled=not ports,
@@ -82,53 +93,71 @@ with st.container(key="bench-connection", border=True):
     )
 
 if capture_clicked:
-    with st.status(f"Reading {port}", expanded=True) as status:
-        st.write("Waiting for the next `# BLOCK` marker and a complete `# END` marker.")
+    with st.status(T(f"Reading {port}", f"Leyendo {port}"), expanded=True) as status:
+        st.write(T(
+            "Waiting for the next `# BLOCK` marker and a complete `# END` marker.",
+            "Esperando el siguiente marcador `# BLOCK` y un marcador `# END` completo.",
+        ))
         try:
             block = blocks.open_and_read(port, baud=int(baud), timeout_s=float(timeout_s))
         except (OSError, ValueError) as exc:
-            status.update(label="Serial capture failed", state="error")
-            st.error(f"Could not read {port}: {exc}")
+            status.update(label=T("Serial capture failed", "La captura serial falló"), state="error")
+            st.error(T(f"Could not read {port}: {exc}", f"No se pudo leer {port}: {exc}"))
             block = None
         if block is None:
-            status.update(label="No complete block received", state="error")
-            st.error("Check the flashed firmware and confirm that it emits the shared block protocol.")
+            status.update(label=T("No complete block received", "No se recibió un bloque completo"), state="error")
+            st.error(T(
+                "Check the flashed firmware and confirm that it emits the shared block protocol.",
+                "Revisa el firmware cargado y confirma que emita el protocolo de bloques compartido.",
+            ))
         else:
             st.session_state.block = block
             kind = plots.detect_kind(block)
-            status.update(label=f"Captured {len(block.rows)} rows as {kind}", state="complete")
+            status.update(
+                label=T(
+                    f"Captured {len(block.rows)} rows as {kind}",
+                    f"Se capturaron {len(block.rows)} filas como {kind}",
+                ),
+                state="complete",
+            )
 
 block = st.session_state.block
 
 if block is None:
-    ui.section_title("Waiting for data")
+    ui.section_title(T("Waiting for data", "Esperando datos"))
     st.info(
-        "Start in Wiring if the circuit is not ready. When the ESP32 appears above, capture one block to reveal the chart and quality checks.",
+        T(
+            "Start in Wiring if the circuit is not ready. When the ESP32 appears above, capture one block to reveal the chart and quality checks.",
+            "Empieza en Cableado si el circuito no está listo. Cuando aparezca la ESP32, captura un bloque para ver la gráfica y las verificaciones.",
+        ),
         icon=":material/info:",
     )
-    st.page_link("pages/2_Wiring.py", label="Open the wiring guide", icon=":material/electrical_services:")
+    st.page_link("pages/2_Wiring.py", label=T("Open the wiring guide", "Abrir la guía de cableado"), icon=":material/electrical_services:")
     st.stop()
 
 kind = plots.detect_kind(block)
-ui.section_title(f"Captured result: {kind}")
+ui.section_title(T(f"Captured result: {kind}", f"Resultado capturado: {kind}"))
 
 meta_col, quality_col = st.columns([1.3, 1])
 with meta_col:
-    st.caption("CAPTURE SUMMARY")
+    st.caption(T("CAPTURE SUMMARY", "RESUMEN DE CAPTURA"))
     a, b, c = st.columns(3)
-    a.metric("Rows", len(block.rows))
-    b.metric("Columns", len(block.rows[0]) if block.rows else 0)
-    c.metric("Detected type", kind)
+    a.metric(T("Rows", "Filas"), len(block.rows))
+    b.metric(T("Columns", "Columnas"), len(block.rows[0]) if block.rows else 0)
+    c.metric(T("Detected type", "Tipo detectado"), kind)
 with quality_col:
-    st.caption("SOURCE METADATA")
+    st.caption(T("SOURCE METADATA", "METADATOS DE ORIGEN"))
     st.json(block.meta, expanded=False)
     if block.columns:
-        st.caption("Columns: " + ", ".join(block.columns))
+        st.caption(T("Columns", "Columnas") + ": " + ", ".join(block.columns))
 
 try:
     fig, stats = plots.plot_block(block)
 except (KeyError, ValueError, IndexError, TypeError) as exc:
-    st.error(f"This block was captured but cannot be plotted: {exc}")
+    st.error(T(
+        f"This block was captured but cannot be plotted: {exc}",
+        f"El bloque fue capturado pero no se puede graficar: {exc}",
+    ))
     fig, stats = None, {}
 
 if fig is not None:
@@ -136,20 +165,20 @@ if fig is not None:
     st.plotly_chart(fig, width="stretch", config={"displaylogo": False})
 
 if stats:
-    st.caption("DERIVED VALUES")
+    st.caption(T("DERIVED VALUES", "VALORES DERIVADOS"))
     metric_cols = st.columns(min(4, len(stats)))
     for idx, (label, value) in enumerate(stats.items()):
-        metric_cols[idx % len(metric_cols)].metric(label, value)
+        metric_cols[idx % len(metric_cols)].metric(ui.stat_label(label), ui.stat_value(value))
 
 with st.container(key="bench-save", border=True):
-    st.subheader("Save this capture")
+    st.subheader(T("Save this capture", "Guardar esta captura"))
     note = st.text_input(
-        "Run note",
+        T("Run note", "Nota de la corrida"),
         key="note_input",
-        placeholder="Example: RC filter, 220 ohm, first cold run",
-        help="A specific note makes comparisons easier later.",
+        placeholder=T("Example: RC filter, 220 ohm, first cold run", "Ejemplo: filtro RC, 220 ohm, primera corrida en frío"),
+        help=T("A specific note makes comparisons easier later.", "Una nota específica facilita las comparaciones posteriores."),
     )
-    if st.button("Save to History", icon=":material/save:", width="stretch"):
+    if st.button(T("Save to History", "Guardar en Historial"), icon=":material/save:", width="stretch"):
         rid = store.save_run(kind, block.meta, block.columns, block.rows, note=note.strip())
-        st.success(f"Run #{rid} saved to History.")
-        st.page_link("pages/5_History.py", label="Open History", icon=":material/history:")
+        st.success(T(f"Run #{rid} saved to History.", f"Corrida #{rid} guardada en Historial."))
+        st.page_link("pages/5_History.py", label=T("Open History", "Abrir Historial"), icon=":material/history:")

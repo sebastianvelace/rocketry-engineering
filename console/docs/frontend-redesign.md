@@ -22,12 +22,12 @@ Design dials:
 | Border | `#29313d` |
 | Primary text | `#eef2f7` |
 | Muted text | `#8d99a8` |
-| Ignition accent | `#ff6b2c` |
+| Signal red accent | `#ef4444` |
 | Success | `#68d391` |
 | Warning | `#f6c85f` |
 | Radius | 9 px |
 
-Orange is reserved for focus, active state, sequence and energy. Green is used
+Red is reserved for focus, active state, sequence and energy. Green is used
 only for real positive system state.
 
 ## Signature
@@ -56,10 +56,14 @@ Wiring uses horizontally scrollable, snap-aligned process cards on narrow
 screens. The tabs separate preparation, physical assembly and the pre-power
 inspection, which prevents the diagram from competing with the checklist.
 
+The `Language / Idioma` selector keeps English or Spanish across every page in
+the current browser session. Navigation, workflows, validation messages,
+tables and plot labels all follow the same selection.
+
 ## Accessibility
 
 - Dark theme is locked across all pages.
-- Focus-visible outlines use the ignition accent.
+- Focus-visible outlines use the signal-red accent.
 - Button, input and muted-text contrast were checked in browser captures.
 - Motion and smooth scrolling honor reduced-motion preferences.
 - Dynamic HTML strings are escaped before insertion.

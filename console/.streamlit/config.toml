@@ -4,11 +4,11 @@ toolbarMode = "minimal"
 
 [theme]
 base = "dark"
-primaryColor = "#ff6b2c"
+primaryColor = "#ef4444"
 backgroundColor = "#080b10"
 secondaryBackgroundColor = "#10151d"
 textColor = "#eef2f7"
-linkColor = "#ff8a57"
+linkColor = "#f87171"
 baseRadius = "0.55rem"
 buttonRadius = "0.45rem"
 borderColor = "#29313d"

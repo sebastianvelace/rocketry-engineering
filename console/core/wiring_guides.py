@@ -1,0 +1,70 @@
+"""Operator-facing, bilingual instructions for each generated circuit."""
+
+GUIDES = {
+    "Direct jumper (Phase 1/2/4)": {
+        "short": "DAC loopback",
+        "short_es": "Lazo DAC",
+        "purpose": "Send the ESP32 DAC output directly back into its ADC input.",
+        "purpose_es": "Enviar la salida DAC de la ESP32 directamente a su entrada ADC.",
+        "use_for": "Sine, FFT, ADC timing and thrust replay captures.",
+        "use_for_es": "Capturas senoidales, FFT, temporización ADC y replay de empuje.",
+        "parts": ["1 ESP32", "1 jumper wire", "1 USB data cable"],
+        "parts_es": ["1 ESP32", "1 cable jumper", "1 cable USB de datos"],
+        "before": "Disconnect USB power before moving the jumper.",
+        "before_es": "Desconecta la alimentación USB antes de mover el jumper.",
+        "verify": [
+            "GPIO25 is the signal source (DAC).",
+            "GPIO34 is the measurement input (ADC).",
+            "No external voltage source is connected to GPIO34.",
+        ],
+        "verify_es": [
+            "GPIO25 es la fuente de señal (DAC).",
+            "GPIO34 es la entrada de medición (ADC).",
+            "No hay una fuente de voltaje externa conectada a GPIO34.",
+        ],
+    },
+    "RC anti-aliasing filter (Phase 3)": {
+        "short": "RC filter",
+        "short_es": "Filtro RC",
+        "purpose": "Place a first-order low-pass filter between the DAC and ADC.",
+        "purpose_es": "Instalar un filtro pasa-bajos de primer orden entre el DAC y el ADC.",
+        "use_for": "Step response and Bode response captures.",
+        "use_for_es": "Capturas de respuesta al escalón y respuesta de Bode.",
+        "parts": ["1 ESP32", "1 × 220 Ω resistor", "1 × 10 µF capacitor", "Jumper wires", "Breadboard"],
+        "parts_es": ["1 ESP32", "1 resistencia de 220 Ω", "1 condensador de 10 µF", "Cables jumper", "Protoboard"],
+        "before": "Disconnect USB power and identify the capacitor polarity before wiring.",
+        "before_es": "Desconecta la alimentación USB e identifica la polaridad del condensador.",
+        "verify": [
+            "The capacitor long leg (+) shares the GPIO34 node.",
+            "The striped or short capacitor leg (-) goes to GND.",
+            "The resistor sits between GPIO25 and the GPIO34 node.",
+        ],
+        "verify_es": [
+            "La pata larga (+) del condensador comparte el nodo GPIO34.",
+            "La pata corta o marcada (-) del condensador va a GND.",
+            "La resistencia está entre GPIO25 y el nodo GPIO34.",
+        ],
+    },
+    "IMU + barometer I2C (future)": {
+        "short": "I2C sensors",
+        "short_es": "Sensores I2C",
+        "purpose": "Share one 3.3 V I2C bus between the IMU and barometer.",
+        "purpose_es": "Compartir un bus I2C de 3.3 V entre la IMU y el barómetro.",
+        "use_for": "Future inertial and atmospheric sensor integration.",
+        "use_for_es": "Integración futura de sensores inerciales y atmosféricos.",
+        "parts": ["1 ESP32", "1 MPU6050 / GY-521", "1 BME280", "Jumper wires", "Breadboard"],
+        "parts_es": ["1 ESP32", "1 MPU6050 / GY-521", "1 BME280", "Cables jumper", "Protoboard"],
+        "before": "Confirm both sensor modules accept 3.3 V logic and power.",
+        "before_es": "Confirma que ambos módulos aceptan alimentación y lógica de 3.3 V.",
+        "verify": [
+            "Both sensors share 3.3 V and GND.",
+            "Both SDA pins connect to GPIO21.",
+            "Both SCL pins connect to GPIO22.",
+        ],
+        "verify_es": [
+            "Ambos sensores comparten 3.3 V y GND.",
+            "Ambos pines SDA se conectan a GPIO21.",
+            "Ambos pines SCL se conectan a GPIO22.",
+        ],
+    },
+}

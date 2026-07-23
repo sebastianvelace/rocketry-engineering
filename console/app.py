@@ -19,6 +19,7 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 ui.setup_page("Home")
+T = ui.tr
 
 ports = blocks.find_ports()
 port_label = escape(ports[0]) if ports else "ESP32 offline"
@@ -28,9 +29,12 @@ st.html(
     f"""
     <section class="rc-hero">
       <div class="rc-hero-copy">
-        <div class="rc-page-kicker">LOCAL ENGINEERING WORKSTATION</div>
-        <h1>Measure. Model. Fly.</h1>
-        <p>One console for hardware captures, propulsion studies, flight simulation and traceable run history.</p>
+        <div class="rc-page-kicker">{T("LOCAL ENGINEERING WORKSTATION", "ESTACIÓN LOCAL DE INGENIERÍA")}</div>
+        <h1>{T("Measure. Model. Fly.", "Mide. Modela. Vuela.")}</h1>
+        <p>{T(
+            "One console for hardware captures, propulsion studies, flight simulation and traceable run history.",
+            "Una consola para capturas de hardware, estudios de propulsión, simulación de vuelo e historial trazable.",
+        )}</p>
         <div class="rc-status" data-state="{port_state}">
           <span class="rc-status-dot"></span><span>{port_label}</span>
         </div>
@@ -46,37 +50,50 @@ st.html(
     """
 )
 
-ui.section_title("System status")
+ui.section_title(T("System status", "Estado del sistema"))
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("ESP32", "Connected" if ports else "Not detected", help=", ".join(ports) if ports else "Connect by USB and check permissions.")
-m2.metric("Saved runs", store.count_runs())
-m3.metric("openMotor", "Ready" if (Path.home() / "openMotor" / ".venv" / "bin" / "python").exists() else "Unavailable")
-m4.metric("OpenRocket", "Ready" if (Path.home() / "openrocket" / ".venv" / "bin" / "python").exists() else "Unavailable")
+m1.metric(
+    "ESP32",
+    T("Connected", "Conectada") if ports else T("Not detected", "No detectada"),
+    help=", ".join(ports) if ports else T("Connect by USB and check permissions.", "Conecta por USB y verifica los permisos."),
+)
+m2.metric(T("Saved runs", "Corridas guardadas"), store.count_runs())
+m3.metric(
+    "openMotor",
+    T("Ready", "Listo") if (Path.home() / "openMotor" / ".venv" / "bin" / "python").exists() else T("Unavailable", "No disponible"),
+)
+m4.metric(
+    "OpenRocket",
+    T("Ready", "Listo") if (Path.home() / "openrocket" / ".venv" / "bin" / "python").exists() else T("Unavailable", "No disponible"),
+)
 
-ui.section_title("Engineering loop")
+ui.section_title(T("Engineering loop", "Ciclo de ingeniería"))
 st.html(
-    """
+    f"""
     <div class="rc-flow">
-      <div class="rc-flow-step"><span class="rc-flow-index">01</span><b>Wire</b><span>Build the bench circuit and verify every connection.</span></div>
-      <div class="rc-flow-step"><span class="rc-flow-index">02</span><b>Measure</b><span>Capture a complete signal block from the ESP32.</span></div>
-      <div class="rc-flow-step"><span class="rc-flow-index">03</span><b>Simulate</b><span>Explore motor geometry and fly a candidate vehicle.</span></div>
-      <div class="rc-flow-step"><span class="rc-flow-index">04</span><b>Review</b><span>Save, reopen, compare and export every run.</span></div>
+      <div class="rc-flow-step"><span class="rc-flow-index">01</span><b>{T("Wire", "Cablea")}</b><span>{T("Build the bench circuit and verify every connection.", "Arma el circuito del banco y verifica cada conexión.")}</span></div>
+      <div class="rc-flow-step"><span class="rc-flow-index">02</span><b>{T("Measure", "Mide")}</b><span>{T("Capture a complete signal block from the ESP32.", "Captura un bloque completo de señal desde la ESP32.")}</span></div>
+      <div class="rc-flow-step"><span class="rc-flow-index">03</span><b>{T("Simulate", "Simula")}</b><span>{T("Explore motor geometry and fly a candidate vehicle.", "Explora la geometría del motor y vuela un vehículo candidato.")}</span></div>
+      <div class="rc-flow-step"><span class="rc-flow-index">04</span><b>{T("Review", "Revisa")}</b><span>{T("Save, reopen, compare and export every run.", "Guarda, reabre, compara y exporta cada corrida.")}</span></div>
     </div>
     """
 )
 
-ui.section_title("Choose your next action")
+ui.section_title(T("Choose your next action", "Elige tu siguiente acción"))
 left, middle, right = st.columns([1.15, 1, 1])
 with left:
-    st.html(ui.card("Hardware", "Capture a signal", "Read one complete serial block, detect its measurement type and inspect the raw response."))
-    st.page_link("pages/1_Bench.py", label="Open Bench", icon=":material/monitor_heart:", width="stretch")
+    st.html(ui.card(T("Hardware", "Hardware"), T("Capture a signal", "Captura una señal"), T("Read one complete serial block, detect its measurement type and inspect the raw response.", "Lee un bloque serial completo, detecta el tipo de medición e inspecciona la respuesta cruda.")))
+    st.page_link("pages/1_Bench.py", label=T("Open Bench", "Abrir banco"), icon=":material/monitor_heart:", width="stretch")
 with middle:
-    st.html(ui.card("Setup", "Wire the circuit", "Follow a guided pin-by-pin build sequence before connecting power or capturing data."))
-    st.page_link("pages/2_Wiring.py", label="Open Wiring", icon=":material/electrical_services:", width="stretch")
+    st.html(ui.card(T("Setup", "Montaje"), T("Wire the circuit", "Cablea el circuito"), T("Follow a guided pin-by-pin build sequence before connecting power or capturing data.", "Sigue una secuencia pin a pin antes de alimentar o capturar datos.")))
+    st.page_link("pages/2_Wiring.py", label=T("Open Wiring", "Abrir cableado"), icon=":material/electrical_services:", width="stretch")
 with right:
-    st.html(ui.card("Analysis", "Run a simulation", "Sweep viable BATES grains, then evaluate the complete vehicle in OpenRocket."))
+    st.html(ui.card(T("Analysis", "Análisis"), T("Run a simulation", "Ejecuta una simulación"), T("Sweep viable BATES grains, then evaluate the complete vehicle in OpenRocket.", "Explora granos BATES viables y evalúa el vehículo completo en OpenRocket.")))
     c1, c2 = st.columns(2)
     c1.page_link("pages/3_Motor.py", label="Motor", icon=":material/local_fire_department:", width="stretch")
-    c2.page_link("pages/4_Flight.py", label="Flight", icon=":material/rocket_launch:", width="stretch")
+    c2.page_link("pages/4_Flight.py", label=T("Flight", "Vuelo"), icon=":material/rocket_launch:", width="stretch")
 
-st.caption("Simulation output supports engineering decisions. It does not replace design review, test evidence or launch safety procedures.")
+st.caption(T(
+    "Simulation output supports engineering decisions. It does not replace design review, test evidence or launch safety procedures.",
+    "La simulación apoya decisiones de ingeniería. No reemplaza la revisión de diseño, la evidencia de pruebas ni los procedimientos de seguridad.",
+))

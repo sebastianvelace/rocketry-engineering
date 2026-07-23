@@ -18,6 +18,10 @@ environment and the OpenRocket JVM all run on the workstation.
 | Flight | Builds and flies a vehicle in OpenRocket from a motor curve and fin geometry. |
 | History | Reopens, compares, exports and manages saved runs. |
 
+Use the `Language / Idioma` selector in the sidebar to switch the complete
+console between English and Spanish. The selection remains active for the
+current browser session.
+
 ## Setup
 
 From `console/`:
@@ -82,8 +86,9 @@ explicit confirmation in the interface.
   openMotor import assumptions and JVM lifecycle constraints.
 - A viable simulated configuration is not a manufacturing, firing or launch
   authorization.
-- Wiring diagrams are generated from `core/diagrams.py`; the numbered
-  connection sequence is the physical assembly source of truth.
+- Wiring diagrams are generated from `core/diagrams.py`; bilingual preparation
+  and verification guidance lives in `core/wiring_guides.py`. The numbered
+  connection sequence remains the physical assembly source of truth.
 
 ## Documentation
 
