@@ -20,18 +20,29 @@ class OpenMotorError(RuntimeError):
     pass
 
 
-def run_sweep(params: dict, timeout_s: float = 120.0) -> dict:
+def run_sweep(params: dict, timeout_s: float = 240.0) -> dict:
     """Run a BATES grain sweep in openMotor and return the parsed JSON result."""
     if not OPENMOTOR_VENV_PYTHON.exists():
         raise OpenMotorError(f"openMotor venv not found at {OPENMOTOR_VENV_PYTHON}")
 
-    proc = subprocess.run(
-        [str(OPENMOTOR_VENV_PYTHON), str(RUNNER), json.dumps(params)],
-        cwd=str(OPENMOTOR_DIR),
-        capture_output=True,
-        text=True,
-        timeout=timeout_s,
-    )
+    try:
+        proc = subprocess.run(
+            [str(OPENMOTOR_VENV_PYTHON), str(RUNNER), json.dumps(params)],
+            cwd=str(OPENMOTOR_DIR),
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired as e:
+        # Caught explicitly: subprocess.run() raises this directly (it is not
+        # a subclass of anything this module defines), so without this it
+        # propagates as a raw traceback in the UI instead of a clear message.
+        # Found by actually running the default (full-range) sweep from the
+        # page, which takes longer than the original 120s budget.
+        raise OpenMotorError(
+            f"Sweep did not finish within {timeout_s:.0f}s. Try a smaller grid "
+            "(fewer core-diameter/segment-count/segment-length combinations)."
+        ) from e
 
     if proc.returncode != 0:
         raise OpenMotorError(f"om_sweep.py exited {proc.returncode}: {proc.stderr[-2000:]}")

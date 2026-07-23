@@ -16,13 +16,22 @@ st.title("Motor sweep (openMotor)")
 st.caption("Headless BATES grain sweep, same physics and safety gates as simulation/internal-ballistics/sweep_bates.py.")
 
 with st.form("sweep_form"):
+    st.caption(
+        "Each combination runs a full internal-ballistics simulation (~0.3-0.5s each). "
+        "Start small (defaults below run in a few seconds) and widen the ranges once "
+        "you know how long your grid takes."
+    )
     c1, c2, c3 = st.columns(3)
     with c1:
-        core_lo, core_hi = st.slider("Core diameter range (mm)", 8, 20, (9, 17))
+        # Small defaults on purpose: the full 9-17mm x all-segment-counts x
+        # 25-60mm grid (~200 combinations) was clocked at over 240s end to
+        # end, well past a comfortable wait and past the adapter's old 120s
+        # timeout -- caught by actually running it once from this page.
+        core_lo, core_hi = st.slider("Core diameter range (mm)", 8, 20, (12, 14))
     with c2:
-        seg_counts = st.multiselect("Segment counts", [2, 3, 4, 5, 6], default=[2, 3, 4, 5, 6])
+        seg_counts = st.multiselect("Segment counts", [2, 3, 4, 5, 6], default=[4, 5])
     with c3:
-        len_lo, len_hi = st.slider("Segment length range (mm)", 20, 70, (25, 60))
+        len_lo, len_hi = st.slider("Segment length range (mm)", 20, 70, (45, 55))
 
     c4, c5 = st.columns(2)
     with c4:
@@ -31,6 +40,17 @@ with st.form("sweep_form"):
         max_total = st.number_input("Max total grain length (mm)", value=320, min_value=50)
 
     target_kn = st.number_input("Target peak Kn", value=280.0, step=10.0)
+
+    n_core = core_hi - core_lo
+    n_len = max(1, (len_hi - len_lo) // max(1, int(len_step)) + 1)
+    n_combos = n_core * max(1, len(seg_counts)) * n_len
+    if n_combos > 80:
+        st.warning(
+            f"~{n_combos} combinations in this grid. Large grids can take several "
+            "minutes -- consider narrowing the ranges if this is your first run."
+        )
+    else:
+        st.caption(f"~{n_combos} combinations in this grid.")
 
     submitted = st.form_submit_button("Run sweep", type="primary")
 
