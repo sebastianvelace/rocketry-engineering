@@ -7,3 +7,7 @@ __pycache__/
 .pio/
 # OS
 .DS_Store
+
+# Console (Streamlit app)
+console/.venv/
+console/runs.db
