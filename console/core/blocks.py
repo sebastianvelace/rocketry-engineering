@@ -41,6 +41,12 @@ class Block:
     columns: list = field(default_factory=list)  # header names, e.g. ["t_us", "adc"]
     rows: list = field(default_factory=list)      # list of float lists
 
+    @classmethod
+    def from_run(cls, run) -> "Block":
+        """Reconstruct a Block from a store.RunRecord, so a saved run can be
+        re-plotted with the exact same code path as a fresh capture."""
+        return cls(kind=run.kind, meta=run.meta, columns=run.columns, rows=run.rows)
+
     def column(self, name_or_index):
         """Return one column of the row data by header name or index."""
         if isinstance(name_or_index, int):
