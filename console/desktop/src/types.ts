@@ -62,6 +62,57 @@ export interface EngineeringStatus {
   openrocket_ready: boolean;
 }
 
+export interface ProviderCommand {
+  name: string;
+  description: string;
+  argumentHint?: string;
+  aliases?: string[];
+}
+
+export interface WiringPin {
+  from: string;
+  to: string;
+  how: string;
+}
+
+export interface WiringGuide {
+  artifact_id: string;
+  circuit: string;
+  short: string;
+  purpose: string;
+  use_for: string;
+  parts: string[];
+  before: string;
+  verify: string[];
+  pins: WiringPin[];
+  svg: string;
+}
+
+export interface OperationResult {
+  run_id: number;
+  [key: string]: unknown;
+}
+
+export interface FlightConfig {
+  motor_curves: string[];
+  architectures: string[];
+}
+
+export interface ComparisonSeries {
+  run_id: number;
+  note: string;
+  points: { x: number; y: number }[];
+}
+
+export interface RunComparison {
+  artifact_id: string;
+  artifact_path: string;
+  kind: string;
+  x_column: string;
+  y_column: string;
+  series: ComparisonSeries[];
+}
+
 export interface Artifact {
   id: string;
   kind: string;

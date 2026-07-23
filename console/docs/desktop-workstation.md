@@ -40,7 +40,12 @@ binary:
 - native `can_use_tool` approval callbacks;
 - native interruption; and
 - project/local settings without unrelated user hooks in the workstation
-  process.
+  process;
+- an explicit, strict Rocketry MCP configuration instead of every connector
+  attached to the Claude account;
+- a provider prewarm when a session is selected, without submitting a model
+  turn; and
+- the live command catalog reported by Claude Code for composer completion.
 
 Internal Claude status and hook payloads are not persisted. The gateway keeps
 only a compact initialization event, visible tool activity, assistant output
@@ -64,8 +69,8 @@ sequence number. Subscriber queues are bounded. If a client is slow, SQLite
 remains the source of truth and reconnect replay fills the gap.
 
 There is no one-second timer. Engineering status, runs and artifacts load at
-startup and refresh after a tool completes or when the operator presses
-refresh.
+startup and refresh after a tool completes, a manual operation finishes or
+the operator presses refresh.
 
 ## Visual system
 
@@ -82,9 +87,42 @@ The interface is treated as an engineering instrument:
 - a categorical metric field for Flight summary runs; and
 - reduced-motion fallbacks.
 
-The left rail owns provider sessions, the central pane owns conversation and
-approval, and the right pane owns runs, activity and artifacts. English and
-Spanish labels persist in local storage across routes and restarts.
+The global rail owns Agent, Bench, Wiring, Motor, Flight and History. Agent
+opens a secondary session rail, a conversation and approval pane, and a result
+dock. Engineering surfaces use rules, forms and data fields rather than a
+dashboard of repeated cards. English and Spanish labels persist in local
+storage across views and restarts.
+
+## Native engineering surfaces
+
+The desktop client now calls the shared service boundary through authenticated
+gateway endpoints:
+
+```text
+Bench   -> capture, detect, save, plot
+Wiring  -> prepare, connect, verify, generated SVG and pin sequence
+Motor   -> bounded openMotor sweep, save, plot
+Flight  -> validated motor curve, OpenRocket run, save, metrics
+History -> filter, reopen, overlay, export and delete
+```
+
+Agent MCP calls and manual UI calls converge on `core/services.py`,
+`runs.db`, the artifact store and the same cross-process operation locks.
+There is no duplicate simulation implementation in React.
+
+## Acceptance on 2026-07-23
+
+- Strict Claude startup connected in 0.52 seconds in an isolated probe.
+- Gateway prewarm connected a real Claude session in 1.08 seconds.
+- Claude reported 44 commands, including `/model` and `/compact`.
+- A one-geometry openMotor request completed in 3.36 seconds and saved run #6.
+- An OpenRocket minimum-diameter flight completed in 4.96 seconds and saved
+  run #7 with a 1503.31 m apogee.
+- Wiring JSON delivered visible UTF-8 SVG and localized pin instructions.
+- Visual inspection covered Agent, Wiring prepare/connect and Motor at
+  1600 by 960.
+- No `/dev/ttyUSB*` or `/dev/ttyACM*` device was present during this
+  acceptance, so a live serial capture was not claimed.
 
 ## Security constraints
 

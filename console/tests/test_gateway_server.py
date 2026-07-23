@@ -139,6 +139,35 @@ class GatewayServerTests(unittest.TestCase):
         self.assertIn("Run the checks", texts)
         self.assertIn("Turn submitted", texts)
 
+    def test_connect_prewarms_provider_without_submitting_a_turn(self):
+        async def exercise():
+            session = await self.create_session(provider="claude")
+            connected = await self.request(
+                "POST",
+                f"/api/sessions/{session['id']}/connect",
+                headers=self.headers,
+            )
+            return connected
+
+        connected = asyncio.run(exercise())
+        self.assertEqual(connected.status_code, 200)
+        self.assertEqual(connected.json()["session"]["status"], "ready")
+        self.assertEqual(self.adapters[0].prompts, [])
+
+    def test_wiring_endpoint_returns_browser_safe_svg(self):
+        response = asyncio.run(
+            self.request(
+                "GET",
+                "/api/wiring?language=es",
+                headers=self.headers,
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        guide = response.json()["guides"][0]
+        self.assertIsInstance(guide["svg"], str)
+        self.assertTrue(guide["svg"].startswith("<svg"))
+        self.assertIn("cable", guide["pins"][0]["how"])
+
     def test_websocket_subprotocol_carries_token_without_query_string(self):
         self.assertEqual(
             websocket_credentials("rocketry, test-token"),

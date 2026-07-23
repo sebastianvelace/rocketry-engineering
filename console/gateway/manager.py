@@ -151,6 +151,14 @@ class SessionManager:
             await self._publish(submitted)
             return submitted
 
+    async def connect(self, session_id: str) -> None:
+        """Warm a provider without consuming a model turn."""
+        async with self._session_locks[session_id]:
+            session = self.store.get_session(session_id)
+            if session.status in {"running", "waiting_approval", "interrupting"}:
+                return
+            await self._ensure_adapter(session_id)
+
     async def _handle_provider_event(
         self,
         session_id: str,

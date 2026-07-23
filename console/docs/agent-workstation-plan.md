@@ -274,20 +274,17 @@ and stderr remain available in an advanced inspector.
 
 The diff inspector and structured provider question forms remain open.
 
-### Phase 5: Streamlit migration
+### Phase 5: Streamlit migration - functional parity implemented
 
-Migrate in this order:
+The desktop now owns Agent, History, Bench, Motor, Flight and Wiring as native
+React surfaces. They call authenticated gateway endpoints backed by the same
+services and persistence as Streamlit and MCP.
 
-1. Agent
-2. History
-3. Bench
-4. Motor
-5. Flight
-6. Wiring
-7. Home
-
-Remove the JSONL relay and polling fragment only after desktop parity and
-recovery tests pass.
+The original Streamlit application remains available as a compatibility
+surface. Home has not been copied as a standalone desktop dashboard because
+its status and routing jobs are already present in the global rail and each
+module header. The JSONL relay remains only for legacy Streamlit Agent use;
+the desktop does not poll it.
 
 ## Permission policy
 

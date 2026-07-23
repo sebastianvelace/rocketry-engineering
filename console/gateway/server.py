@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import uvicorn
+from anyio import to_thread
 from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
@@ -29,6 +30,7 @@ CORE_ROOT = CONSOLE_ROOT / "core"
 sys.path.insert(0, str(CORE_ROOT))
 
 import artifacts  # noqa: E402
+import mcp_tools  # noqa: E402
 import services  # noqa: E402
 
 
@@ -77,6 +79,12 @@ def create_app(
     artifact_store = artifacts.ArtifactStore()
     history_service = services.HistoryService()
     bench_service = services.BenchService()
+    engineering_tools = mcp_tools.RocketryTools(
+        history=history_service,
+        bench=bench_service,
+        artifact_store=artifact_store,
+        console_root=CONSOLE_ROOT,
+    )
 
     def authorized(request: Request) -> bool:
         return secrets.compare_digest(bearer_token(request), config.token)
@@ -121,6 +129,18 @@ def create_app(
             return JSONResponse({"ok": True, "session": gateway_store.serialize(session)})
         except KeyError as exc:
             return error_response("not_found", str(exc), 404)
+
+    async def connect_session(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        try:
+            await session_manager.connect(request.path_params["session_id"])
+            session = gateway_store.get_session(request.path_params["session_id"])
+            return JSONResponse({"ok": True, "session": gateway_store.serialize(session)})
+        except KeyError as exc:
+            return error_response("not_found", str(exc), 404)
+        except Exception as exc:
+            return error_response("provider_unavailable", str(exc), 503)
 
     async def list_events(request: Request):
         if not authorized(request):
@@ -225,6 +245,155 @@ def create_app(
                 ).is_file(),
             }
         )
+
+    async def wiring_guides(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        try:
+            language = request.query_params.get("language", "en")
+            circuit = request.query_params.get("circuit")
+            keys = engineering_tools.wiring.list_keys()
+            if circuit:
+                return JSONResponse(
+                    {
+                        "ok": True,
+                        "circuits": keys,
+                        "guide": engineering_tools.get_wiring_guide(circuit, language),
+                    }
+                )
+            guides = [
+                engineering_tools.get_wiring_guide(key, language)
+                for key in keys
+            ]
+            return JSONResponse({"ok": True, "circuits": keys, "guides": guides})
+        except services.ServiceError as exc:
+            return error_response(exc.code, exc.message, 404)
+
+    async def capture_bench(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        try:
+            payload = await request.json()
+            result = await to_thread.run_sync(
+                lambda: engineering_tools.capture_bench(
+                    port=str(payload.get("port") or ""),
+                    baud=int(payload.get("baud", 115200)),
+                    timeout_s=float(payload.get("timeout_s", 15)),
+                    note=str(payload.get("note") or ""),
+                )
+            )
+            return JSONResponse({"ok": True, "result": result}, status_code=201)
+        except services.ServiceError as exc:
+            return error_response(exc.code, exc.message, 422)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            return error_response("invalid_request", str(exc), 400)
+
+    async def motor_sweep(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        try:
+            payload = await request.json()
+            result = await to_thread.run_sync(
+                lambda: engineering_tools.run_motor_sweep(
+                    core_min_mm=int(payload.get("core_min_mm", 12)),
+                    core_max_mm=int(payload.get("core_max_mm", 14)),
+                    segment_counts=[int(item) for item in payload.get("segment_counts", [4, 5])],
+                    segment_length_min_mm=int(payload.get("segment_length_min_mm", 45)),
+                    segment_length_max_mm=int(payload.get("segment_length_max_mm", 55)),
+                    segment_length_step_mm=int(payload.get("segment_length_step_mm", 5)),
+                    maximum_stack_mm=int(payload.get("maximum_stack_mm", 320)),
+                    target_peak_kn=float(payload.get("target_peak_kn", 280)),
+                    note=str(payload.get("note") or ""),
+                    timeout_s=float(payload.get("timeout_s", 240)),
+                )
+            )
+            return JSONResponse({"ok": True, "result": result}, status_code=201)
+        except services.ServiceError as exc:
+            return error_response(exc.code, exc.message, 422)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            return error_response("invalid_request", str(exc), 400)
+
+    def motor_curves() -> list[Path]:
+        return sorted((REPOSITORY_ROOT / "simulation" / "internal-ballistics").glob("*.eng"))
+
+    async def flight_config(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        return JSONResponse(
+            {
+                "ok": True,
+                "motor_curves": [path.name for path in motor_curves()],
+                "architectures": ["mindia", "separate"],
+            }
+        )
+
+    async def run_flight(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        try:
+            payload = await request.json()
+            requested = str(payload.get("motor_curve") or "")
+            curves = {path.name: path for path in motor_curves()}
+            if requested not in curves:
+                raise ValueError("Unknown motor curve.")
+            fin_payload = payload.get("fin") or {}
+            fin = {
+                "root": float(fin_payload.get("root_mm", 55)) / 1000,
+                "tip": float(fin_payload.get("tip_mm", 25)) / 1000,
+                "height": float(fin_payload.get("height_mm", 30)) / 1000,
+                "sweep": float(fin_payload.get("sweep_mm", 30)) / 1000,
+                "thickness": float(fin_payload.get("thickness_mm", 1.6)) / 1000,
+            }
+            result = await to_thread.run_sync(
+                lambda: engineering_tools.run_flight(
+                    motor_curve_path=str(curves[requested]),
+                    architecture=str(payload.get("architecture", "mindia")),
+                    fin=fin,
+                    wind_m_s=float(payload.get("wind_m_s", 2)),
+                    note=str(payload.get("note") or ""),
+                    timeout_s=float(payload.get("timeout_s", 60)),
+                )
+            )
+            return JSONResponse({"ok": True, "result": result}, status_code=201)
+        except services.ServiceError as exc:
+            return error_response(exc.code, exc.message, 422)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            return error_response("invalid_request", str(exc), 400)
+
+    async def compare_runs(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        try:
+            payload = await request.json()
+            result = engineering_tools.compare_runs(
+                [int(item) for item in payload.get("run_ids", [])],
+                x_column=payload.get("x_column") or None,
+                y_column=payload.get("y_column") or None,
+            )
+            return JSONResponse({"ok": True, "comparison": result})
+        except services.ServiceError as exc:
+            return error_response(exc.code, exc.message, 422)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            return error_response("invalid_request", str(exc), 400)
+
+    async def export_run(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        try:
+            item = engineering_tools.export_csv(int(request.path_params["run_id"]))
+            item["download_url"] = f"/api/artifacts/{item['id']}/content"
+            return JSONResponse({"ok": True, "artifact": item}, status_code=201)
+        except services.ServiceError as exc:
+            return error_response(exc.code, exc.message, 404)
+
+    async def delete_run(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        try:
+            history_service.delete(int(request.path_params["run_id"]))
+            return JSONResponse({"ok": True})
+        except services.ServiceError as exc:
+            return error_response(exc.code, exc.message, 404)
 
     async def list_runs(request: Request):
         if not authorized(request):
@@ -377,14 +546,23 @@ def create_app(
         Route("/api/sessions", list_sessions, methods=["GET"]),
         Route("/api/sessions", create_session, methods=["POST"]),
         Route("/api/sessions/{session_id:str}", get_session, methods=["GET"]),
+        Route("/api/sessions/{session_id:str}/connect", connect_session, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/events", list_events, methods=["GET"]),
         Route("/api/sessions/{session_id:str}/messages", send_message, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/interrupt", interrupt, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/approvals", pending_approvals, methods=["GET"]),
         Route("/api/approvals/{approval_id:str}", resolve_approval, methods=["POST"]),
         Route("/api/status", engineering_status, methods=["GET"]),
+        Route("/api/wiring", wiring_guides, methods=["GET"]),
+        Route("/api/bench/capture", capture_bench, methods=["POST"]),
+        Route("/api/motor/sweep", motor_sweep, methods=["POST"]),
+        Route("/api/flight/config", flight_config, methods=["GET"]),
+        Route("/api/flight/run", run_flight, methods=["POST"]),
         Route("/api/runs", list_runs, methods=["GET"]),
         Route("/api/runs/{run_id:int}", get_run, methods=["GET"]),
+        Route("/api/runs/{run_id:int}", delete_run, methods=["DELETE"]),
+        Route("/api/runs/{run_id:int}/export", export_run, methods=["POST"]),
+        Route("/api/runs/compare", compare_runs, methods=["POST"]),
         Route("/api/artifacts", list_artifacts, methods=["GET"]),
         Route(
             "/api/artifacts/{artifact_id:str}/content",
@@ -400,7 +578,7 @@ def create_app(
         app,
         allow_origins=["tauri://localhost", "http://localhost", "http://127.0.0.1"],
         allow_origin_regex=r"^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?$",
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["authorization", "content-type"],
     )
 

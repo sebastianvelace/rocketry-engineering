@@ -51,6 +51,15 @@ class ArtifactAndLockTests(unittest.TestCase):
 
 
 class RocketryToolTests(unittest.TestCase):
+    def test_wiring_is_localized_and_json_serializable(self):
+        guide = RocketryTools().get_wiring_guide(
+            "Direct jumper (Phase 1/2/4)",
+            language="es",
+        )
+        encoded = json.dumps(guide)
+        self.assertIn("<svg", encoded)
+        self.assertEqual(guide["pins"][0]["how"], "un cable jumper")
+
     def test_capture_is_saved_and_returns_bounded_preview(self):
         captured = blocks.Block(
             kind="SINE",

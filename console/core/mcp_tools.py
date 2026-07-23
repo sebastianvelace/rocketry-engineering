@@ -77,6 +77,15 @@ class RocketryTools:
         def localized(field: str):
             return item.guide.get(f"{field}_es", item.guide[field]) if spanish else item.guide[field]
 
+        pins = [
+            {
+                "from": pin.get("from_es", pin["from"]) if spanish else pin["from"],
+                "to": pin.get("to_es", pin["to"]) if spanish else pin["to"],
+                "how": pin.get("how_es", pin["how"]) if spanish else pin["how"],
+            }
+            for pin in item.pins
+        ]
+        svg = item.svg.decode("utf-8") if isinstance(item.svg, bytes) else item.svg
         return {
             "artifact_id": f"wiring:{item.key}:{'es' if spanish else 'en'}",
             "circuit": item.key,
@@ -86,8 +95,8 @@ class RocketryTools:
             "parts": localized("parts"),
             "before": localized("before"),
             "verify": localized("verify"),
-            "pins": item.pins,
-            "svg": item.svg,
+            "pins": pins,
+            "svg": svg,
         }
 
     def run_motor_sweep(

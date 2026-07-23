@@ -21,7 +21,7 @@ same contracts.
 | Motor | Runs a bounded BATES geometry sweep and exposes viable openMotor candidates. |
 | Flight | Builds and flies a vehicle in OpenRocket from a motor curve and fin geometry. |
 | History | Reopens, compares, exports and manages saved runs. |
-| Agent | Mirrors structured Codex or Claude activity from a terminal session without exposing a browser shell. |
+| Agent | Runs durable Codex or Claude Code sessions, streams their work and exposes approvals without a browser shell. |
 
 Use the `Language / Idioma` selector in the sidebar to switch the complete
 console between English and Spanish. The selection remains active for the
@@ -70,12 +70,22 @@ Claude Agent SDK uses the existing Claude Code subscription login.
 The desktop client provides:
 
 - a provider selector for independent Codex and Claude sessions;
+- native Bench, Wiring, Motor, Flight and History work surfaces;
 - durable conversation and activity history in `.rocketry/gateway.db`;
 - WebSocket streaming without periodic page polling;
 - inline permission approval and interruption;
-- live History runs, engineering plots and persistent artifacts;
+- the same saved runs whether an operation starts manually or through an agent;
+- Claude Code command discovery by typing `/` in the composer;
+- provider prewarming without consuming a model turn;
+- live engineering plots, run comparison, CSV export and persistent artifacts;
 - a bilingual English/Spanish interface saved in local preferences; and
 - a normalized activity view with raw command output available when relevant.
+
+Claude is intentionally started with the Rocketry MCP only. Built-in Claude
+Code tools and project commands remain available, while unrelated account
+connectors are excluded from this process. This keeps initial connection
+latency bounded and avoids waiting on remote MCP servers that are irrelevant
+to the workstation.
 
 Build the Linux executable without packaging:
 

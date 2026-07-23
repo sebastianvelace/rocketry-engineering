@@ -258,6 +258,9 @@ class ClaudeAdapter:
             str,
             tuple[asyncio.Future, dict[str, Any], list[Any]],
         ] = {}
+        console_root = Path(__file__).resolve().parents[2]
+        rocketry_python = console_root / ".venv" / "bin" / "python"
+        rocketry_server = console_root / "rocketry_mcp.py"
         options = ClaudeAgentOptions(
             cwd=workspace,
             resume=provider_session_id,
@@ -267,6 +270,14 @@ class ClaudeAdapter:
             include_partial_messages=True,
             include_hook_events=False,
             setting_sources=["project", "local"],
+            mcp_servers={
+                "rocketry": {
+                    "type": "stdio",
+                    "command": str(rocketry_python),
+                    "args": [str(rocketry_server)],
+                }
+            },
+            strict_mcp_config=True,
             stderr=self._stderr,
         )
         self.client = ClaudeSDKClient(options=options)
@@ -314,6 +325,18 @@ class ClaudeAdapter:
         self._loop = asyncio.get_running_loop()
         try:
             await self.client.connect()
+            info = await self.client.get_server_info() or {}
+            await self.event_sink(
+                ProviderEvent(
+                    "session",
+                    "Provider capabilities",
+                    data={
+                        "commands": list(info.get("commands") or []),
+                        "models": list(info.get("models") or []),
+                        "output_style": info.get("output_style"),
+                    },
+                )
+            )
         except Exception as exc:
             raise ProviderError(f"Claude Code failed to start: {exc}") from exc
         return self.provider_session_id

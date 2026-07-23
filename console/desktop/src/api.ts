@@ -4,11 +4,15 @@ import type {
   Approval,
   Artifact,
   EngineeringStatus,
+  FlightConfig,
   GatewayConnection,
   Provider,
   RunRecord,
+  RunComparison,
   RunSummary,
   Session,
+  WiringGuide,
+  OperationResult,
 } from "./types";
 
 function runningInTauri(): boolean {
@@ -61,6 +65,15 @@ export class GatewayApi {
     return payload.session;
   }
 
+  async connectSession(sessionId: string): Promise<Session> {
+    return (
+      await this.request<{ session: Session }>(
+        `/api/sessions/${sessionId}/connect`,
+        { method: "POST" },
+      )
+    ).session;
+  }
+
   async events(sessionId: string, after = 0): Promise<AgentEvent[]> {
     return (
       await this.request<{ events: AgentEvent[] }>(
@@ -105,12 +118,72 @@ export class GatewayApi {
     return this.request<EngineeringStatus>("/api/status");
   }
 
+  async wiring(language: string): Promise<WiringGuide[]> {
+    return (
+      await this.request<{ guides: WiringGuide[] }>(
+        `/api/wiring?language=${encodeURIComponent(language)}`,
+      )
+    ).guides;
+  }
+
+  async captureBench(payload: Record<string, unknown>): Promise<OperationResult> {
+    return (
+      await this.request<{ result: OperationResult }>("/api/bench/capture", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    ).result;
+  }
+
+  async motorSweep(payload: Record<string, unknown>): Promise<OperationResult> {
+    return (
+      await this.request<{ result: OperationResult }>("/api/motor/sweep", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    ).result;
+  }
+
+  async flightConfig(): Promise<FlightConfig> {
+    return this.request<FlightConfig>("/api/flight/config");
+  }
+
+  async runFlight(payload: Record<string, unknown>): Promise<OperationResult> {
+    return (
+      await this.request<{ result: OperationResult }>("/api/flight/run", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    ).result;
+  }
+
   async runs(): Promise<RunSummary[]> {
     return (await this.request<{ runs: RunSummary[] }>("/api/runs")).runs;
   }
 
   async run(id: number): Promise<RunRecord> {
     return (await this.request<{ run: RunRecord }>(`/api/runs/${id}`)).run;
+  }
+
+  async compareRuns(runIds: number[]): Promise<RunComparison> {
+    return (
+      await this.request<{ comparison: RunComparison }>("/api/runs/compare", {
+        method: "POST",
+        body: JSON.stringify({ run_ids: runIds }),
+      })
+    ).comparison;
+  }
+
+  async exportRun(id: number): Promise<Artifact> {
+    return (
+      await this.request<{ artifact: Artifact }>(`/api/runs/${id}/export`, {
+        method: "POST",
+      })
+    ).artifact;
+  }
+
+  async deleteRun(id: number): Promise<void> {
+    await this.request(`/api/runs/${id}`, { method: "DELETE" });
   }
 
   async artifacts(): Promise<Artifact[]> {
