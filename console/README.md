@@ -24,18 +24,29 @@ console/.venv/bin/streamlit run console/app.py
 Opens at `http://localhost:8501`. This only runs locally — it reads the ESP32's
 serial port directly, which is not possible from a hosted web app.
 
+## Pages
+
+- **Bench** — capture a block from the ESP32, auto-detect its kind (sine,
+  FFT, jitter, RC step, ADC calibration, Bode sweep, thrust replay), plot it,
+  save it.
+- **Wiring** — reproducible schematics (schemdraw) + explicit pin-to-pin
+  tables for the bench circuits.
+- **Motor** — BATES grain sweep in openMotor, run as a subprocess in its own
+  venv (`motorlib` is an unpackaged source tree that only imports with
+  `cwd=~/openMotor`).
+- **Flight** — fly a design in OpenRocket, also a subprocess (its own venv,
+  isolates the JVM to one process per simulation).
+- **History** — every saved run, filterable by kind; reopen one to re-plot
+  it, overlay several of the same kind to compare, export CSV, delete.
+
 ## Status
 
-- ✅ **Rebanada 1 — core + Bench page.** `core/blocks.py` (generic serial block
-  reader, replaces the 7 duplicated parsers in `avionics/daq-fase1/`),
-  `core/store.py` (SQLite run history), `core/plots.py` (Plotly renderer for
-  each of the 6 block kinds: sine/aliasing, FFT, timing jitter, RC step
-  response, ADC calibration, Bode sweep, thrust replay), `pages/1_Bench.py`
-  (capture, auto-detect, plot, save).
-- ⬜ Rebanada 2 — wiring diagrams (schemdraw).
-- ⬜ Rebanada 3 — motor sweep panel (openMotor, subprocess adapter).
-- ⬜ Rebanada 4 — flight sim panel (OpenRocket, subprocess adapter).
-- ⬜ Rebanada 5 — cross-run history and comparison view.
+All 5 rebanadas of the original plan are complete and verified against real
+hardware/data (not just synthetic tests) — see
+[`~/.claude/plans/solo-yo-busca-la-robust-bentley.md`](../../.claude/plans/solo-yo-busca-la-robust-bentley.md)
+for the full verification log, including two real bugs caught and fixed along
+the way (a `sys.path` issue in the openMotor subprocess, and a motor-mass
+double-count in the OpenRocket 'mindia' architecture).
 
 ## Notes
 
@@ -43,3 +54,8 @@ serial port directly, which is not possible from a hosted web app.
   local data, not portfolio artifacts).
 - The plot math mirrors the standalone scripts in `avionics/daq-fase1/`
   exactly — this app does not reimplement the analysis, it re-renders it.
+  Same principle for Motor/Flight: the subprocess runners import and call the
+  existing `sweep_bates.py` / `architecture.py` functions unmodified.
+- Known limits: local-only (serial + JVM access require it), no live streaming
+  at kHz rates (Streamlit's rerun model doesn't fit that; the DAQ's block-based
+  capture does), no embedded OpenRocket GUI, no 3D rocket view.
