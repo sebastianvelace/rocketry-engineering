@@ -178,13 +178,29 @@ export interface ComparisonSeries {
   points: { x: number; y: number }[];
 }
 
+export interface FlightComparisonRun {
+  run_id: number;
+  note: string;
+  created_at: string;
+  meta: Record<string, unknown>;
+}
+
+export interface FlightComparisonMetric {
+  name: string;
+  unit: string;
+  values: Array<{ run_id: number; value: number }>;
+}
+
 export interface RunComparison {
   artifact_id: string;
   artifact_path: string;
+  mode: "series" | "flight_metrics";
   kind: string;
   x_column: string;
   y_column: string;
   series: ComparisonSeries[];
+  runs?: FlightComparisonRun[];
+  metrics?: FlightComparisonMetric[];
 }
 
 export interface Artifact {

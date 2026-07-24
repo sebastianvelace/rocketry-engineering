@@ -526,6 +526,42 @@ Coverage includes:
 - a browser E2E that injects a completed Flight tool call and verifies the
   resulting OpenRocket metrics appear automatically beside the conversation.
 
+### Engineering-specific result views and rocket comparison
+
+`RunPlot` no longer assumes every numeric table is a time series. The display
+now follows the semantics of each simulator:
+
+- `MOTOR_SWEEP` ranks viable openMotor candidates and exposes designation,
+  grain geometry, impulse, burn time, peak thrust and peak pressure. When
+  multiple candidates exist, the plot uses burn time as x and impulse as y,
+  instead of graphing unrelated leading columns.
+- `FLIGHT` labels OpenRocket summary values with their engineering units.
+- Comparing `FLIGHT` runs aligns values by metric name rather than row index.
+  The comparison includes each run's note, airframe architecture and motor
+  curve, with percentage deltas against the first selected vehicle.
+- Selecting a run of another kind in History starts a new compatible
+  selection instead of producing a delayed backend error.
+
+The API response identifies either `series` or `flight_metrics` comparison
+mode. The latter is saved as the same traceable JSON comparison artifact as
+other overlays. Unit, component and E2E coverage verifies the behavior with
+representative minimum-diameter and separate-airframe runs.
+
+### Workstation identity and startup
+
+The desktop shell uses the same geometric Rocketry mark in the navigation
+rail, application icon and browser fallback favicon. The startup surface
+reports two real phases only:
+
+1. connecting the local gateway and agent services;
+2. restoring sessions, engineering runs and artifacts.
+
+It deliberately avoids a fabricated percentage. Once the shell is available,
+the chart renderer is fetched only when a saved result is opened. This removes
+`uPlot` from the initial application chunk and keeps startup focused on
+restoring the conversation. The two-pane agent workspace remains visible down
+to 1040 px; below that width the conversation takes priority.
+
 ## Security constraints
 
 - The gateway binds to `127.0.0.1` only.

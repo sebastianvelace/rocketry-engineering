@@ -116,6 +116,44 @@ class RocketryToolTests(unittest.TestCase):
         self.assertEqual(len(payload["series"]), 2)
         self.assertLessEqual(len(payload["series"][0]["points"]), 25)
 
+    def test_compare_flight_runs_aligns_named_metrics_and_keeps_vehicle_context(self):
+        runs = {
+            11: store.RunRecord(
+                id=11,
+                created_at="2026-07-23T00:00:00+00:00",
+                kind="FLIGHT",
+                meta={"architecture": "mindia", "eng_path": "/motors/E.eng"},
+                columns=["metric", "value"],
+                rows=[["apogee", 1503.3], ["mach", 0.826], ["ok", True]],
+                note="minimum diameter",
+            ),
+            12: store.RunRecord(
+                id=12,
+                created_at="2026-07-23T01:00:00+00:00",
+                kind="FLIGHT",
+                meta={"architecture": "separate", "eng_path": "/motors/F.eng"},
+                columns=["metric", "value"],
+                rows=[["apogee", 1624.6], ["mach", 0.830], ["ok", True]],
+                note="separate airframe",
+            ),
+        }
+        history = services.HistoryService(
+            get_fn=lambda run_id: runs.get(run_id),
+            list_fn=lambda kind=None: list(runs.values()),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            tools = RocketryTools(
+                history=history,
+                artifact_store=artifacts.ArtifactStore(Path(tmp) / "artifacts"),
+            )
+            result = tools.compare_runs([11, 12])
+
+        self.assertEqual(result["mode"], "flight_metrics")
+        self.assertEqual([metric["name"] for metric in result["metrics"]], ["apogee", "mach"])
+        self.assertEqual(result["metrics"][0]["unit"], "m")
+        self.assertEqual(result["metrics"][0]["values"][1]["value"], 1624.6)
+        self.assertEqual(result["runs"][1]["meta"]["architecture"], "separate")
+
 
 class MCPTransportTests(unittest.TestCase):
     def test_stdio_server_initializes_and_exposes_expected_tools(self):

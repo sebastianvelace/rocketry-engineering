@@ -6,6 +6,7 @@ import {
   Play,
   Trash,
   Warning,
+  X,
 } from "@phosphor-icons/react";
 import { motion } from "motion/react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -96,7 +97,7 @@ function BenchDiagnosticsPanel({ diagnostics, language }: { diagnostics: BenchDi
       <dl>
         <div><dt>{text(language, "Bytes recibidos", "Bytes received")}</dt><dd>{diagnostics.bytes_received}</dd></div>
         <div><dt>{text(language, "Líneas recibidas", "Lines received")}</dt><dd>{diagnostics.lines_received}</dd></div>
-        <div><dt>{text(language, "Bloque iniciado", "Block started")}</dt><dd>{diagnostics.saw_block_start ? text(language, "sí", "yes") : text(language, "no — nunca llegó '# BLOCK'", "no — '# BLOCK' never arrived")}</dd></div>
+        <div><dt>{text(language, "Bloque iniciado", "Block started")}</dt><dd>{diagnostics.saw_block_start ? text(language, "sí", "yes") : text(language, "no, nunca llegó '# BLOCK'", "no, '# BLOCK' never arrived")}</dd></div>
         <div><dt>{text(language, "Filas capturadas", "Rows captured")}</dt><dd>{diagnostics.rows_captured}</dd></div>
         <div><dt>{text(language, "Última línea vista", "Last line seen")}</dt><dd>{diagnostics.last_line || text(language, "(ninguna)", "(none)")}</dd></div>
       </dl>
@@ -381,7 +382,7 @@ export function MotorView({ api, language, status, onRunSaved }: BaseProps) {
           </div>
         </details>
         <label className="wide-field"><span>{text(language, "Nota", "Note")}</span><input value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} /></label>
-        <div className="estimate"><strong>{combinations}</strong><span>{text(language, "combinaciones", "combinations")}<small>≈ {Math.max(1, Math.round(combinations * 0.4))} s</small></span></div>
+        <div className="estimate"><strong>{combinations}</strong><span>{text(language, "geometrías solicitadas", "requested geometries")}</span></div>
         <OperationButton busy={busy}>{text(language, "Ejecutar barrido", "Run sweep")}</OperationButton>
       </form>
       <ErrorLine error={error} />
@@ -439,13 +440,13 @@ export function FlightView({ api, language, status, onRunSaved }: BaseProps) {
       />
       <form className="instrument-form flight-form" onSubmit={submit}>
         <section>
-          <span className="form-section-label">01 / {text(language, "VEHÍCULO", "VEHICLE")}</span>
+          <span className="form-section-label">{text(language, "VEHÍCULO", "VEHICLE")}</span>
           <label><span>{text(language, "Arquitectura", "Architecture")}</span><select value={form.architecture} onChange={(event) => setForm({ ...form, architecture: event.target.value })}><option value="mindia">{text(language, "Diámetro mínimo", "Minimum diameter")}</option><option value="separate">{text(language, "Fuselaje separado", "Separate airframe")}</option></select></label>
           <label><span>{text(language, "Curva de motor", "Motor curve")}</span><select value={form.motorCurve} onChange={(event) => setForm({ ...form, motorCurve: event.target.value })}>{compatible.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label><span>{text(language, "Viento", "Wind")} <small>m/s</small></span><input type="number" min={0} max={15} step={0.5} value={form.wind} onChange={(event) => setNumber("wind", event.target.value)} /></label>
         </section>
         <section>
-          <span className="form-section-label">02 / {text(language, "ALETAS TRAPEZOIDALES", "TRAPEZOIDAL FINS")}</span>
+          <span className="form-section-label">{text(language, "ALETAS TRAPEZOIDALES", "TRAPEZOIDAL FINS")}</span>
           {([["root", "Root"], ["tip", "Tip"], ["height", "Span"], ["sweep", "Sweep"], ["thickness", "Thickness"]] as [keyof typeof form, string][]).map(([key, label]) => (
             <label key={key}><span>{label} <small>mm</small></span><input type="number" min={key === "sweep" ? 0 : 0.1} step={0.1} value={String(form[key])} onChange={(event) => setNumber(key, event.target.value)} /></label>
           ))}
@@ -482,6 +483,64 @@ function ComparisonPlot({ comparison }: { comparison: RunComparison }) {
   );
 }
 
+function FlightComparison({
+  comparison,
+  language,
+}: {
+  comparison: RunComparison;
+  language: Language;
+}) {
+  const comparedRuns = comparison.runs || [];
+  const metrics = comparison.metrics || [];
+  if (!comparedRuns.length || !metrics.length) return null;
+  const gridStyle = {
+    gridTemplateColumns: `minmax(130px, .72fr) repeat(${comparedRuns.length}, minmax(150px, 1fr))`,
+  };
+  const fileName = (value: unknown) => String(value || "").split("/").at(-1) || text(language, "sin curva", "no curve");
+  return (
+    <div className="flight-comparison">
+      <div className="flight-comparison-head" style={gridStyle}>
+        <div>
+          <span>{text(language, "MÉTRICA", "METRIC")}</span>
+          <strong>{text(language, "Comparación directa", "Direct comparison")}</strong>
+        </div>
+        {comparedRuns.map((run, index) => (
+          <div key={run.run_id}>
+            <span>RUN #{run.run_id}{index === 0 ? ` / ${text(language, "BASE", "BASELINE")}` : ""}</span>
+            <strong>{run.note || `${String(run.meta.architecture || "rocket")} #${run.run_id}`}</strong>
+            <small>{String(run.meta.architecture || "n/a")} / {fileName(run.meta.eng_path)}</small>
+          </div>
+        ))}
+      </div>
+      {metrics.map((metric) => {
+        const baseline = metric.values[0]?.value;
+        return (
+          <div className="flight-comparison-row" style={gridStyle} key={metric.name}>
+            <div><strong>{metric.name.replaceAll("_", " ")}</strong><small>{metric.unit}</small></div>
+            {comparedRuns.map((run, index) => {
+              const value = metric.values.find((entry) => entry.run_id === run.run_id)?.value;
+              const delta = (
+                index > 0
+                && value !== undefined
+                && baseline !== undefined
+                && Math.abs(baseline) > 1e-9
+              ) ? ((value - baseline) / Math.abs(baseline)) * 100 : null;
+              return (
+                <div key={run.run_id}>
+                  <strong>{value?.toLocaleString(undefined, { maximumFractionDigits: 3 }) ?? "n/a"}</strong>
+                  {index === 0
+                    ? <small>{metric.unit}</small>
+                    : <small className={delta !== null && delta >= 0 ? "positive" : ""}>{delta === null ? metric.unit : `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%`}</small>}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function HistoryView({
   api,
   language,
@@ -500,6 +559,17 @@ export function HistoryView({
   const [comparison, setComparison] = useState<RunComparison | null>(null);
   const [error, setError] = useState("");
   const filtered = runs.filter((run) => `${run.kind} ${run.note}`.toLowerCase().includes(query.toLowerCase()));
+  const pickedKind = runs.find((run) => run.id === picked[0])?.kind;
+
+  function toggleRun(run: RunSummary) {
+    setComparison(null);
+    setPicked((current) => {
+      if (current.includes(run.id)) return current.filter((id) => id !== run.id);
+      const currentKind = runs.find((candidate) => candidate.id === current[0])?.kind;
+      if (currentKind && currentKind !== run.kind) return [run.id];
+      return current.length < 6 ? [...current, run.id] : current;
+    });
+  }
 
   async function compare() {
     setError("");
@@ -513,14 +583,18 @@ export function HistoryView({
       <div className="history-toolbar">
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text(language, "Buscar tipo o nota", "Search type or note")} />
         <span>{filtered.length} / {runs.length}</span>
-        <button disabled={picked.length < 2} onClick={() => void compare()}>{text(language, "Comparar selección", "Compare selection")}</button>
+        <button disabled={picked.length < 2} onClick={() => void compare()}>
+          {picked.length >= 2
+            ? `${text(language, "Comparar", "Compare")} ${picked.length} ${pickedKind || ""}`
+            : text(language, "Selecciona al menos 2", "Select at least 2")}
+        </button>
       </div>
       <ErrorLine error={error} />
       <div className="history-layout">
         <div className="run-index">
           {filtered.map((run) => (
             <article className={selectedRun?.id === run.id ? "active" : ""} key={run.id}>
-              <button className="compare-check" onClick={() => setPicked((current) => current.includes(run.id) ? current.filter((id) => id !== run.id) : current.length < 6 ? [...current, run.id] : current)}><i>{picked.includes(run.id) && <Check size={12} />}</i></button>
+              <button className="compare-check" title={pickedKind && pickedKind !== run.kind ? text(language, "Inicia una nueva selección de este tipo", "Start a new selection of this type") : text(language, "Añadir a comparación", "Add to comparison")} onClick={() => toggleRun(run)}><i>{picked.includes(run.id) && <Check size={12} />}</i></button>
               <button className="run-open" onClick={() => void api.run(run.id).then(setSelectedRun)}>
                 <span>#{run.id}</span><strong>{run.kind.replaceAll("_", " ")}</strong><small>{run.note || new Date(run.created_at).toLocaleString(language)}</small>
               </button>
@@ -530,8 +604,10 @@ export function HistoryView({
         <div className="history-detail">
           {comparison ? (
             <section>
-              <header className="detail-title"><div><span>OVERLAY</span><h2>{comparison.kind}</h2></div><button onClick={() => setComparison(null)}>×</button></header>
-              <ComparisonPlot comparison={comparison} />
+              <header className="detail-title"><div><span>{comparison.mode === "flight_metrics" ? "VEHICLE COMPARISON" : "OVERLAY"}</span><h2>{comparison.kind}</h2></div><button title={text(language, "Cerrar comparación", "Close comparison")} onClick={() => setComparison(null)}><X size={16} /></button></header>
+              {comparison.mode === "flight_metrics"
+                ? <FlightComparison comparison={comparison} language={language} />
+                : <ComparisonPlot comparison={comparison} />}
             </section>
           ) : selectedRun ? (
             <>

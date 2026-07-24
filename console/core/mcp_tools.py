@@ -190,6 +190,83 @@ class RocketryTools:
         if len(kinds) != 1:
             raise services.ServiceError("incompatible_runs", "All compared runs must have the same type.")
 
+        if runs[0].kind == "FLIGHT":
+            metric_maps: list[dict[str, float]] = []
+            for run in runs:
+                values: dict[str, float] = {}
+                for row in run.rows:
+                    if (
+                        len(row) >= 2
+                        and isinstance(row[0], str)
+                        and type(row[1]) in {int, float}
+                    ):
+                        values[row[0]] = float(row[1])
+                metric_maps.append(values)
+            ordered_metrics = [
+                row[0]
+                for row in runs[0].rows
+                if (
+                    len(row) >= 2
+                    and isinstance(row[0], str)
+                    and row[0] in metric_maps[0]
+                    and all(row[0] in values for values in metric_maps[1:])
+                )
+            ]
+            if not ordered_metrics:
+                raise services.ServiceError(
+                    "incompatible_runs",
+                    "The selected flight runs do not share a numeric metric.",
+                )
+            unit_by_metric = {
+                "apogee": "m",
+                "mach": "Ma",
+                "vmax": "m/s",
+                "mass": "g",
+                "margin": "cal",
+                "margin_bo": "cal",
+                "rail": "m/s",
+                "wind": "m/s",
+            }
+            comparison = {
+                "mode": "flight_metrics",
+                "kind": "FLIGHT",
+                "x_column": "metric",
+                "y_column": "value",
+                "series": [],
+                "runs": [
+                    {
+                        "run_id": run.id,
+                        "note": run.note,
+                        "created_at": run.created_at,
+                        "meta": run.meta,
+                    }
+                    for run in runs
+                ],
+                "metrics": [
+                    {
+                        "name": metric,
+                        "unit": unit_by_metric.get(metric, ""),
+                        "values": [
+                            {"run_id": run.id, "value": values[metric]}
+                            for run, values in zip(runs, metric_maps)
+                        ],
+                    }
+                    for metric in ordered_metrics
+                ],
+            }
+            artifact = self.artifacts.save(
+                kind="run_comparison",
+                content=json.dumps(comparison, ensure_ascii=False),
+                suffix=".json",
+                media_type="application/json",
+                metadata={"run_ids": run_ids, "comparison_mode": "flight_metrics"},
+            )
+            return {
+                "artifact_id": artifact.id,
+                "artifact_path": artifact.path,
+                **comparison,
+            }
+
         numeric_by_run = [dict(self.history.numeric_columns(run)) for run in runs]
         common = set(numeric_by_run[0])
         for columns in numeric_by_run[1:]:
@@ -222,6 +299,7 @@ class RocketryTools:
             series.append({"run_id": run.id, "note": run.note, "points": points[::stride]})
 
         comparison = {
+            "mode": "series",
             "kind": runs[0].kind,
             "x_column": x_column or "sample_index",
             "y_column": chosen_y,

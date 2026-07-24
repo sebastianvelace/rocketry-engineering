@@ -83,7 +83,8 @@ export type MockGatewayController = {
   session: Record<string, unknown>;
   runs: MockRun[];
   lastSteer: string;
-  emit: (event: Record<string, unknown>) => void;
+  isSocketConnected: () => boolean;
+  emit: (event: Record<string, unknown>) => Promise<void>;
 };
 
 const controllers = new WeakMap<Page, MockGatewayController>();
@@ -112,7 +113,14 @@ export async function mockGateway(
     session: { ...baseSession },
     runs: [],
     lastSteer: "",
-    emit: (event) => socket?.send(JSON.stringify(event)),
+    isSocketConnected: () => socket !== null,
+    emit: async (event) => {
+      // Playwright reports the routed socket as open just before the page-side
+      // message listener is guaranteed to be active. Yield one browser frame
+      // so this fixture models a server event that follows subscription setup.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      socket?.send(JSON.stringify(event));
+    },
   };
   controllers.set(page, controller);
   await page.routeWebSocket("ws://gateway.test/**", (route) => {
@@ -175,6 +183,40 @@ export async function mockGateway(
           columns: run.columns,
           meta: run.meta,
         })),
+      };
+    } else if (path === "/api/runs/compare" && method === "POST") {
+      const ids = (request.postDataJSON().run_ids || []) as number[];
+      const selected = ids
+        .map((id) => controller.runs.find((run) => run.id === id))
+        .filter((run): run is MockRun => Boolean(run));
+      const metricNames = selected[0]?.rows
+        .filter((row) => typeof row[0] === "string" && typeof row[1] === "number")
+        .map((row) => String(row[0])) || [];
+      payload = {
+        ok: true,
+        comparison: {
+          artifact_id: "comparison-1",
+          artifact_path: "/tmp/comparison.json",
+          mode: "flight_metrics",
+          kind: "FLIGHT",
+          x_column: "metric",
+          y_column: "value",
+          series: [],
+          runs: selected.map((run) => ({
+            run_id: run.id,
+            note: run.note,
+            created_at: run.created_at,
+            meta: run.meta,
+          })),
+          metrics: metricNames.map((name) => ({
+            name,
+            unit: name === "apogee" ? "m" : name === "mach" ? "Ma" : "",
+            values: selected.map((run) => ({
+              run_id: run.id,
+              value: Number(run.rows.find((row) => row[0] === name)?.[1]),
+            })),
+          })),
+        },
       };
     } else if (path.match(/^\/api\/runs\/\d+$/)) {
       const id = Number(path.split("/").pop());

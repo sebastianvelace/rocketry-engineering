@@ -100,15 +100,15 @@ function ProviderPanel({
 
       {provider === "claude" ? (
         <div className="usage-facts">
-          <div><span>{copy(language, "Solicitudes · 24 h", "Requests · 24h")}</span><strong>{usage.activity?.day?.requests ?? "—"}</strong></div>
-          <div><span>{copy(language, "Sesiones · 24 h", "Sessions · 24h")}</span><strong>{usage.activity?.day?.sessions ?? "—"}</strong></div>
-          <div><span>{copy(language, "Solicitudes · 7 d", "Requests · 7d")}</span><strong>{usage.activity?.week?.requests ?? "—"}</strong></div>
+          <div><span>{copy(language, "Solicitudes · 24 h", "Requests · 24h")}</span><strong>{usage.activity?.day?.requests ?? "n/a"}</strong></div>
+          <div><span>{copy(language, "Sesiones · 24 h", "Sessions · 24h")}</span><strong>{usage.activity?.day?.sessions ?? "n/a"}</strong></div>
+          <div><span>{copy(language, "Solicitudes · 7 d", "Requests · 7d")}</span><strong>{usage.activity?.week?.requests ?? "n/a"}</strong></div>
           <div><span>{copy(language, "Tokens locales", "Local tokens")}</span><strong>{formatTokens((local.input_tokens || 0) + (local.output_tokens || 0))}</strong></div>
         </div>
       ) : (
         <>
           <div className="usage-facts">
-            <div><span>{copy(language, "Plan reportado", "Reported plan")}</span><strong>{codexLimits?.planType || "—"}</strong></div>
+            <div><span>{copy(language, "Plan reportado", "Reported plan")}</span><strong>{codexLimits?.planType || "n/a"}</strong></div>
             <div><span>{copy(language, "Tokens históricos", "Lifetime tokens")}</span><strong>{formatTokens(summary?.lifetimeTokens)}</strong></div>
             <div><span>{copy(language, "Pico diario", "Peak daily")}</span><strong>{formatTokens(summary?.peakDailyTokens)}</strong></div>
             <div><span>{copy(language, "Tokens locales", "Local tokens")}</span><strong>{formatTokens(local.total_tokens)}</strong></div>

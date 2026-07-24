@@ -27,7 +27,6 @@ import { CSSProperties, FormEvent, lazy, Suspense, useCallback, useEffect, useMe
 import { GatewayApi, connectGateway } from "./api";
 import { AskUserQuestionItem, AskUserQuestionPanel, buildTimeline, DiffBlock, Timeline, unifiedDiffToLines } from "./ActivityFeed";
 import { CopyKey, eventLabel, Language, statusLabel, translate } from "./i18n";
-import { RunPlot } from "./RunPlot";
 import type {
   AgentEvent,
   Approval,
@@ -54,6 +53,7 @@ const MotorView = lazy(() => import("./EngineeringViews").then((module) => ({ de
 const FlightView = lazy(() => import("./EngineeringViews").then((module) => ({ default: module.FlightView })));
 const HistoryView = lazy(() => import("./EngineeringViews").then((module) => ({ default: module.HistoryView })));
 const UsageView = lazy(() => import("./UsageView").then((module) => ({ default: module.UsageView })));
+const RunPlot = lazy(() => import("./RunPlot").then((module) => ({ default: module.RunPlot })));
 
 function ViewLoading() {
   return <div className="view-loading" />;
@@ -132,6 +132,7 @@ export default function App() {
   const t = useCallback((key: CopyKey) => translate(language, key), [language]);
   const [api, setApi] = useState<GatewayApi | null>(null);
   const [connectionError, setConnectionError] = useState("");
+  const [bootStage, setBootStage] = useState<"gateway" | "workspace">("gateway");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [events, setEvents] = useState<AgentEvent[]>([]);
@@ -187,8 +188,10 @@ export default function App() {
 
   const loadGateway = useCallback(async () => {
     setConnectionError("");
+    setBootStage("gateway");
     try {
       const client = new GatewayApi(await connectGateway());
+      setBootStage("workspace");
       let loaded: [Session[], EngineeringStatus, RunSummary[], Artifact[]] | null = null;
       let lastError: unknown;
       for (const delay of [0, 150, 300, 600, 1200]) {
@@ -513,8 +516,31 @@ export default function App() {
 
   if (!api) return (
     <main className="boot-screen">
-      <div className="brand-lockup"><span>R/</span> ROCKETRY</div>
-      {connectionError ? <><p>{t("gatewayError")}</p><code>{connectionError}</code><button className="button primary" onClick={() => void loadGateway()}><ArrowClockwise size={17} />{t("retry")}</button></> : <div className="boot-line"><CircleNotch className="spin" size={18} />Starting local gateway</div>}
+      <div className="boot-brand">
+        <img src="/rocketry-mark.svg" alt="" />
+        <div><strong>ROCKETRY</strong><span>WORKSTATION</span></div>
+      </div>
+      <div className="boot-trajectory" aria-hidden="true"><i /><span /></div>
+      {connectionError ? (
+        <section className="boot-error" role="alert">
+          <strong>{t("gatewayError")}</strong>
+          <code>{connectionError}</code>
+          <button className="button primary" onClick={() => void loadGateway()}><ArrowClockwise size={17} />{t("retry")}</button>
+        </section>
+      ) : (
+        <div className="boot-status" role="status" aria-live="polite">
+          <strong>
+            {bootStage === "gateway"
+              ? (language === "es" ? "Iniciando gateway local" : "Starting local gateway")
+              : (language === "es" ? "Restaurando espacio de trabajo" : "Restoring workspace")}
+          </strong>
+          <span>
+            {bootStage === "gateway"
+              ? (language === "es" ? "Conectando servicios del agente" : "Connecting agent services")
+              : (language === "es" ? "Cargando sesiones, corridas y artefactos" : "Loading sessions, runs and artifacts")}
+          </span>
+        </div>
+      )}
     </main>
   );
 
@@ -557,7 +583,7 @@ export default function App() {
           )}
         </AnimatePresence>
         <aside className="global-rail">
-          <div className="brand-mark">R<span>/</span></div>
+          <div className="brand-mark"><img src="/rocketry-mark.svg" alt="Rocketry" /></div>
           <nav>{nav.map(({ id, icon: Icon }) => <motion.button whileTap={{ scale: 0.92 }} className={view === id ? "active" : ""} onClick={() => setView(id)} key={id}><Icon size={21} weight={view === id ? "fill" : "regular"} /><span>{viewCopy[id][language]}</span></motion.button>)}</nav>
           <footer>
             <button onClick={() => setLanguage(language === "es" ? "en" : "es")}><strong>{language.toUpperCase()}</strong><span>{language === "es" ? "EN" : "ES"}</span></button>
@@ -754,7 +780,7 @@ export default function App() {
                               {selectedRun && (
                                 <>
                                   <div className="run-dock-title"><span>RUN #{selectedRun.id}</span><h2>{selectedRun.kind.replaceAll("_", " ")}</h2></div>
-                                  <RunPlot run={selectedRun} />
+                                  <Suspense fallback={<div className="run-plot-skeleton" aria-label={language === "es" ? "Cargando visualización" : "Loading visualization"} />}><RunPlot run={selectedRun} /></Suspense>
                                   <div className="data-foot"><span>{selectedRun.row_count} {t("samples")}</span>{Object.entries(selectedRun.meta).slice(0, 5).map(([key, value]) => <span key={key}>{key}: {compactDetail(value)}</span>)}</div>
                                 </>
                               )}

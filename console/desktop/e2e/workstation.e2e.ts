@@ -47,6 +47,7 @@ test("a simulation completed by the agent opens and plots its new run automatica
   await page.goto("/");
   const gateway = mockGatewayController(page);
   await expect(page.locator(".agent-state")).toContainText("Listo");
+  await expect(page.locator(".agent-state span")).toHaveClass(/online/);
 
   gateway.runs.unshift({
     id: 91,
@@ -62,7 +63,7 @@ test("a simulation completed by the agent opens and plots its new run automatica
     ],
     meta: { source: "OpenRocket", requested_by: "agent" },
   });
-  gateway.emit({
+  await gateway.emit({
     sequence: 4,
     id: "flight-tool-complete",
     session_id: "session-1",
@@ -77,6 +78,44 @@ test("a simulation completed by the agent opens and plots its new run automatica
   await expect(page.getByText("Nuevo resultado del agente")).toBeVisible();
   await expect(page.locator(".run-dock-title")).toContainText("RUN #91");
   await expect(page.locator(".metric-field")).toContainText("1,503.4");
+});
+
+test("History compares different rockets by named flight metric", async ({ page }) => {
+  const gateway = mockGatewayController(page);
+  gateway.runs.push(
+    {
+      id: 41,
+      kind: "FLIGHT",
+      note: "Minimum diameter",
+      created_at: now,
+      columns: ["metric", "value"],
+      rows: [["apogee", 1503.3], ["mach", 0.826]],
+      meta: { architecture: "mindia", eng_path: "/motors/E_sintubo.eng" },
+    },
+    {
+      id: 42,
+      kind: "FLIGHT",
+      note: "Separate airframe",
+      created_at: now,
+      columns: ["metric", "value"],
+      rows: [["apogee", 1624.6], ["mach", 0.830]],
+      meta: { architecture: "separate", eng_path: "/motors/A.eng" },
+    },
+  );
+  await page.goto("/");
+  await page.getByRole("button", { name: "Historial" }).click();
+
+  const runs = page.locator(".run-index article");
+  await runs.nth(0).locator(".compare-check").click();
+  await runs.nth(1).locator(".compare-check").click();
+  await page.getByRole("button", { name: "Comparar 2 FLIGHT" }).click();
+
+  const comparison = page.locator(".flight-comparison");
+  await expect(comparison).toContainText("Minimum diameter");
+  await expect(comparison).toContainText("Separate airframe");
+  await expect(comparison).toContainText("1,503.3");
+  await expect(comparison).toContainText("+8.1%");
+  await expect(comparison).toContainText("E_sintubo.eng");
 });
 
 const richActivityEvents = [
