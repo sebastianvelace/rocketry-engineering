@@ -1,7 +1,8 @@
 import { CaretDown, CaretRight, CheckSquare, Sparkle, Terminal, UsersThree, WarningCircle } from "@phosphor-icons/react";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { AgentEvent } from "./types";
 import { Language } from "./i18n";
+import { DiffLine, lineDiff } from "./diff";
 
 const MessageContent = lazy(() => import("./MessageContent").then((module) => ({ default: module.MessageContent })));
 
@@ -19,6 +20,7 @@ export type TimelineItem =
       status: ToolStatus;
       output: string;
       isError: boolean;
+      startedAt: string;
     }
   | {
       kind: "subagent";
@@ -129,7 +131,7 @@ export function buildTimeline(events: AgentEvent[]): TimelineItem[] {
         break;
       case "tool_started": {
         const { id, name, input } = toolLabel(event.data);
-        const item: TimelineItem = { kind: "tool", id: event.id, name, input, status: "running", output: "", isError: false };
+        const item: TimelineItem = { kind: "tool", id: event.id, name, input, status: "running", output: "", isError: false, startedAt: event.created_at };
         items.push(item);
         if (id) toolIndex.set(id, items.length - 1);
         break;
@@ -144,7 +146,7 @@ export function buildTimeline(events: AgentEvent[]): TimelineItem[] {
             break;
           }
         }
-        items.push({ kind: "tool", id: event.id, name: "tool", input: undefined, status: isError ? "error" : "done", output, isError });
+        items.push({ kind: "tool", id: event.id, name: "tool", input: undefined, status: isError ? "error" : "done", output, isError, startedAt: event.created_at });
         break;
       }
       case "command_output": {
@@ -205,19 +207,75 @@ function compact(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+export function unifiedDiffToLines(text: string): DiffLine[] {
+  return text
+    .split("\n")
+    .filter((line) => !line.startsWith("+++") && !line.startsWith("---") && !line.startsWith("@@"))
+    .map((line) => {
+      if (line.startsWith("+")) return { kind: "add", text: line.slice(1) };
+      if (line.startsWith("-")) return { kind: "remove", text: line.slice(1) };
+      return { kind: "context", text: line.replace(/^ /, "") };
+    });
+}
+
+// Detects a diffable tool call from its input shape rather than its name,
+// since Claude (Edit/Write) and Codex (fileChange) disagree on both.
+export function extractDiff(input: unknown): DiffLine[] | null {
+  if (!input || typeof input !== "object") return null;
+  const record = input as Record<string, unknown>;
+  if (typeof record.old_string === "string" && typeof record.new_string === "string") {
+    return lineDiff(record.old_string, record.new_string);
+  }
+  const unified = record.diff ?? record.unifiedDiff ?? record.patch;
+  if (typeof unified === "string" && unified.trim()) {
+    return unifiedDiffToLines(unified);
+  }
+  if (typeof record.content === "string" && typeof record.file_path === "string") {
+    return lineDiff("", record.content);
+  }
+  return null;
+}
+
+function DiffBlock({ lines }: { lines: DiffLine[] }) {
+  return (
+    <pre className="timeline-diff">
+      {lines.map((line, index) => (
+        <span className={`diff-${line.kind}`} key={index}>
+          {line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}
+          {line.text}
+          {"\n"}
+        </span>
+      ))}
+    </pre>
+  );
+}
+
+function useElapsedSeconds(startedAt: string, live: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!live) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [live]);
+  return Math.max(0, Math.round((now - new Date(startedAt).getTime()) / 1000));
+}
+
 function ToolCard({ item, language }: { item: Extract<TimelineItem, { kind: "tool" }>; language: Language }) {
   const [open, setOpen] = useState(false);
+  const diff = extractDiff(item.input);
+  const elapsed = useElapsedSeconds(item.startedAt, item.status === "running");
   return (
     <article className={`timeline-tool status-${item.status}`}>
       <button type="button" className="timeline-tool-head" onClick={() => setOpen((value) => !value)}>
         {open ? <CaretDown size={12} /> : <CaretRight size={12} />}
         <Terminal size={14} />
         <span>{item.name}</span>
+        {item.status === "running" && <small>{elapsed}s</small>}
         <em>{item.status === "running" ? (language === "es" ? "ejecutando" : "running") : item.status === "error" ? (language === "es" ? "error" : "failed") : (language === "es" ? "listo" : "done")}</em>
       </button>
       {open && (
         <div className="timeline-tool-body">
-          {item.input !== undefined && <pre>{compact(item.input)}</pre>}
+          {diff ? <DiffBlock lines={diff} /> : item.input !== undefined && <pre>{compact(item.input)}</pre>}
           {item.output && <pre className={item.isError ? "is-error" : ""}>{item.output}</pre>}
         </div>
       )}

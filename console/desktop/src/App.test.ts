@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTimeline } from "./ActivityFeed";
+import { buildTimeline, extractDiff, unifiedDiffToLines } from "./ActivityFeed";
 import { activityEvents } from "./App";
 import { translate } from "./i18n";
 import type { AgentEvent } from "./types";
@@ -96,6 +96,39 @@ describe("unified activity timeline", () => {
         event(3, "command_output", "ok"),
       ]).map((item) => item.type),
     ).toEqual(["tool_started", "command_output"]);
+  });
+});
+
+describe("tool call diff detection", () => {
+  it("diffs a Claude Edit tool call from old_string/new_string", () => {
+    const diff = extractDiff({ file_path: "a.py", old_string: "x = 1", new_string: "x = 2" });
+    expect(diff).toEqual([{ kind: "remove", text: "x = 1" }, { kind: "add", text: "x = 2" }]);
+  });
+
+  it("treats a Claude Write tool call as a pure addition", () => {
+    const diff = extractDiff({ file_path: "a.py", content: "print(1)" });
+    expect(diff).toEqual([{ kind: "add", text: "print(1)" }]);
+  });
+
+  it("parses a Codex fileChange unified diff field", () => {
+    const diff = extractDiff({ type: "fileChange", diff: "--- a\n+++ b\n@@\n-old\n+new\n context" });
+    expect(diff).toEqual([
+      { kind: "remove", text: "old" },
+      { kind: "add", text: "new" },
+      { kind: "context", text: "context" },
+    ]);
+  });
+
+  it("does not treat a plain Bash command as a diff", () => {
+    expect(extractDiff({ command: "pytest -q" })).toBeNull();
+  });
+
+  it("parses standalone unified diff text", () => {
+    expect(unifiedDiffToLines("+added\n-removed\n unchanged")).toEqual([
+      { kind: "add", text: "added" },
+      { kind: "remove", text: "removed" },
+      { kind: "context", text: "unchanged" },
+    ]);
   });
 });
 

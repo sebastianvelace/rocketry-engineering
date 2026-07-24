@@ -235,8 +235,8 @@ const richActivityEvents = [
     created_at: now,
     type: "tool_started",
     role: null,
-    text: "Bash",
-    data: { tool: { id: "tool-1", name: "Bash", input: { command: "pytest -q" } } },
+    text: "Edit",
+    data: { tool: { id: "tool-1", name: "Edit", input: { file_path: "test_flaky.py", old_string: "random.seed()", new_string: "random.seed(0)" } } },
     raw: {},
   },
   {
@@ -306,9 +306,11 @@ test("thinking, tool calls, subagents and plan updates render inline in the conv
   await expect(feed.locator(".timeline-plan li.status-completed")).toContainText("Seed the RNG in the fixture");
 
   const tool = feed.locator(".timeline-tool");
-  await expect(tool).toContainText("Bash");
+  await expect(tool).toContainText("Edit");
   await tool.locator(".timeline-tool-head").click();
   await expect(tool.locator(".timeline-tool-body")).toContainText("12 passed");
+  await expect(tool.locator(".diff-remove")).toContainText("random.seed()");
+  await expect(tool.locator(".diff-add")).toContainText("random.seed(0)");
 
   await expect(feed.locator(".message.assistant").last()).toContainText("Fixed the flaky test.");
 });

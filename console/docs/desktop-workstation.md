@@ -192,9 +192,7 @@ every new message/payload shape, a frontend unit test
 (`desktop/src/App.test.ts`) asserting the merge order, and a mocked-gateway
 Playwright scenario (`desktop/e2e/workstation.e2e.ts`) asserting thinking,
 a tool call, a subagent and a plan update all render inline in the
-conversation. Not yet exercised against a live Claude or Codex turn — the
-Codex `fileChange` diff field (needed for the next phase) still needs that
-live confirmation before its parser is considered final.
+conversation. Not yet exercised against a live Claude or Codex turn.
 
 ### Structured `AskUserQuestion` (Claude)
 
@@ -231,6 +229,25 @@ tool's result rather than the CLI expecting a different interactive path —
 per this project's own measure-before-you-trust discipline, this is
 exactly the kind of assumption that needs a real measurement, not a second
 inference.
+
+### Diff inspector
+
+Tool call cards (`ActivityFeed.tsx`'s `ToolCard`) now detect a diffable
+call from its **input shape**, not its tool name, since Claude (`Edit`/
+`Write`) and Codex (`fileChange`) disagree on both: `old_string`/
+`new_string` renders a real line diff (`desktop/src/diff.ts`, a
+dependency-free ~40-line LCS differ — no new npm package, matching how the
+repo only added `react-markdown`/`remark-gfm` before this), a `diff`/
+`unifiedDiff`/`patch` string is parsed as a standard unified diff, and a
+bare `content` + `file_path` (Claude `Write`) renders as a pure addition.
+Running tool calls show a live elapsed-time counter, cleared once the
+paired `tool_completed` event lands (Phase 1's started/completed
+correlation makes this possible without new plumbing).
+
+The Codex `fileChange` field name (`diff` vs. `unifiedDiff` vs. `patch`) is
+still a guess — none of Codex's app-server protocol is vendored locally to
+confirm it, so this needs the same live check as `AskUserQuestion` above,
+against a real Codex file-edit turn.
 
 ## Workspace and model scope
 
