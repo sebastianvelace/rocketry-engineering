@@ -78,6 +78,69 @@ export interface ProviderModel {
   supportsEffort?: boolean;
   supportedEffortLevels?: string[];
   supportsFastMode?: boolean;
+  isDefault?: boolean;
+}
+
+export interface CommandResult {
+  action: "usage" | "created" | "event" | "renamed" | "running";
+  session: Session;
+  event?: AgentEvent;
+}
+
+export interface UsageWindow {
+  id?: string;
+  used_percent?: number;
+  usedPercent?: number;
+  resets_at_label?: string;
+  resetsAt?: number | null;
+  windowDurationMins?: number | null;
+}
+
+export interface ProviderUsage {
+  available: boolean;
+  error?: string;
+  source?: string;
+  subscription?: boolean;
+  windows?: UsageWindow[];
+  activity?: Record<string, { requests: number; sessions: number }>;
+  rate_limits?: {
+    rateLimits?: {
+      planType?: string;
+      primary?: UsageWindow | null;
+      secondary?: UsageWindow | null;
+      credits?: { balance?: string | null; hasCredits?: boolean; unlimited?: boolean } | null;
+    };
+    rateLimitsByLimitId?: Record<string, {
+      planType?: string;
+      primary?: UsageWindow | null;
+      secondary?: UsageWindow | null;
+    }> | null;
+    rateLimitResetCredits?: { availableCount: number };
+  };
+  token_usage?: {
+    summary?: {
+      lifetimeTokens?: number | null;
+      peakDailyTokens?: number | null;
+      longestRunningTurnSec?: number | null;
+      currentStreakDays?: number | null;
+      longestStreakDays?: number | null;
+    };
+    dailyUsageBuckets?: Array<{ startDate: string; tokens: number }> | null;
+  };
+}
+
+export interface UsageSnapshot {
+  ok: boolean;
+  refreshed_at: string;
+  cached: boolean;
+  providers: {
+    claude: ProviderUsage;
+    codex: ProviderUsage;
+  };
+  local: {
+    claude: Record<string, number>;
+    codex: Record<string, number>;
+  };
 }
 
 export interface WiringPin {

@@ -75,9 +75,13 @@ The desktop client provides:
 - WebSocket streaming without periodic page polling;
 - inline permission approval and interruption;
 - the same saved runs whether an operation starts manually or through an agent;
-- Claude Code command discovery by typing `/` in the composer;
-- a native `/model` selector backed by Claude Code's current model catalog,
-  with the choice remembered per session;
+- provider-aware command discovery by typing `/` in the composer;
+- a native `/model` selector backed by the current Claude Code or Codex
+  catalog, with the choice remembered per session;
+- native session commands for status, usage, rename, clear and the provider
+  operations that its installed protocol actually exposes;
+- a Usage surface with real Claude subscription windows, real Codex account
+  rate limits and clearly separated workstation-local token totals;
 - GitHub-flavored Markdown rendering for agent messages;
 - an explicitly visible full-repository workspace boundary;
 - a resizable global navigation rail and consistently dark native controls;
@@ -222,6 +226,9 @@ explicit confirmation in the interface.
   connection sequence remains the physical assembly source of truth.
 - The desktop gateway uses Codex app-server and the official Claude Agent SDK.
   Both transports render approvals explicitly instead of bypassing them.
+- Provider usage is cached for 60 seconds. Manual refresh reads Claude Code's
+  `/usage` output and Codex app-server's account usage/rate-limit endpoints;
+  it never estimates an account limit from local tokens.
 
 ## Documentation
 

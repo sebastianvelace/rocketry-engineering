@@ -93,6 +93,47 @@ async function mockGateway(page: Page) {
       payload = { ok: true, runs: [] };
     } else if (path === "/api/artifacts") {
       payload = { ok: true, artifacts: [] };
+    } else if (path === "/api/usage") {
+      payload = {
+        ok: true,
+        refreshed_at: now,
+        cached: false,
+        providers: {
+          claude: {
+            available: true,
+            source: "claude /usage",
+            windows: [
+              { id: "session", used_percent: 3, resets_at_label: "11:30pm" },
+              { id: "week", used_percent: 54, resets_at_label: "Jul 25" },
+            ],
+            activity: {
+              day: { requests: 282, sessions: 9 },
+              week: { requests: 1105, sessions: 19 },
+            },
+          },
+          codex: {
+            available: true,
+            source: "codex app-server",
+            rate_limits: {
+              rateLimits: {
+                planType: "plus",
+                primary: { usedPercent: 78, resetsAt: 1780000000 },
+              },
+            },
+            token_usage: {
+              summary: { lifetimeTokens: 480718386, peakDailyTokens: 28000000 },
+              dailyUsageBuckets: [
+                { startDate: "2026-07-22", tokens: 12000000 },
+                { startDate: "2026-07-23", tokens: 28000000 },
+              ],
+            },
+          },
+        },
+        local: {
+          claude: { input_tokens: 24, output_tokens: 5831 },
+          codex: { total_tokens: 59144 },
+        },
+      };
     } else if (path === "/api/sessions/session-1/connect") {
       payload = { ok: true, session: { ...baseSession, metadata: { model: selectedModel } } };
     } else if (path === "/api/sessions/session-1/events") {
@@ -162,4 +203,15 @@ test("navigation rail resizes and engineering selects keep the dark instrument t
   await expect(select).toBeVisible();
   await expect(select).toHaveCSS("background-color", "rgb(11, 16, 22)");
   await expect(select).toHaveCSS("color", "rgb(237, 240, 244)");
+});
+
+test("usage view displays real provider limits and distinguishes local tokens", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Uso" }).click();
+
+  await expect(page.getByRole("heading", { name: "Uso" })).toBeVisible();
+  await expect(page.locator(".usage-provider").filter({ hasText: "Claude Code" })).toContainText("54%");
+  await expect(page.locator(".usage-provider").filter({ hasText: "Codex" })).toContainText("78%");
+  await expect(page.locator(".usage-provider").filter({ hasText: "Codex" })).toContainText(/480[,.]7/);
+  await expect(page.locator(".usage-foot")).toContainText("aproximación local del CLI");
 });

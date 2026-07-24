@@ -29,7 +29,10 @@ Codex uses the documented app-server stdio protocol:
 - incremental message, reasoning, command and tool events;
 - exact turn interruption;
 - command, file-change and permission-profile approvals; and
-- `workspaceWrite` sandboxing with `on-request` approval policy.
+- `workspace-write` sandboxing with `on-request` approval policy;
+- the live model catalog and per-turn model override; and
+- native compact, review, rename, fork, account rate-limit and account usage
+  requests.
 
 Claude uses the official Python Agent SDK over the installed Claude Code
 binary:
@@ -49,6 +52,13 @@ binary:
 - a native `/model` picker populated from Claude Code's own capability
   response; and
 - per-session model persistence and restoration when a conversation reconnects.
+
+The composer uses a small provider-aware router. `/model`, `/usage`, `/status`,
+`/rename` and `/clear` have consistent workstation behavior. Codex additionally
+maps `/compact`, `/review` and `/fork` to app-server methods. Other Claude
+commands are accepted only when the installed Claude process reports them in
+its initialization capability catalog; unknown commands are rejected instead
+of being disguised as ordinary prompts.
 
 Internal Claude status and hook payloads are not persisted. The gateway keeps
 only a compact initialization event, visible tool activity, assistant output
@@ -74,6 +84,21 @@ remains the source of truth and reconnect replay fills the gap.
 There is no one-second timer. Engineering status, runs and artifacts load at
 startup and refresh after a tool completes, a manual operation finishes or
 the operator presses refresh.
+
+Usage is also pull-based. Its provider snapshot is cached for 60 seconds and
+can be refreshed manually:
+
+- Claude percentages and reset labels come from the authenticated CLI's
+  `/usage` response. Claude's request/session contribution figures are its
+  approximate local activity and can omit other devices.
+- Codex limits and historical token buckets come from
+  `account/rateLimits/read` and `account/usage/read` on the authenticated
+  app-server process.
+- "Local tokens" are computed only from durable turns observed by this
+  workstation. They are labelled separately and are not billing totals.
+
+Raw Claude usage prose and Codex reset-credit identifiers are not exposed to
+the React client.
 
 ## Visual system
 
@@ -113,12 +138,13 @@ without trusting hidden configuration. Codex applies the current
 `workspace-write` sandbox preset to that root; Claude Code starts with the same working directory and its normal
 built-in repository tools.
 
-Typing `/model` in a Claude session opens the native model selector instead of
+Typing `/model` in either provider opens the native model selector instead of
 sending a conversational prompt. Selecting a model calls the Agent SDK's live
-`set_model` operation and saves the choice in the session metadata. A resumed
-session restores that choice before accepting the next turn. Model options
-are never hard-coded in React; they come from the installed Claude Code
-process, so the interface follows the subscription's actual availability.
+`set_model` operation for Claude or applies the app-server model override for
+Codex, then saves the choice in session metadata. A resumed session restores
+that choice before accepting the next turn. Model options are never hard-coded
+in React; they come from the installed provider process, so the interface
+follows the authenticated account's actual availability.
 
 ## Native engineering surfaces
 
@@ -156,6 +182,13 @@ There is no duplicate simulation implementation in React.
   streamed turn completed with `CODEX_E2E_OK` in about five seconds.
 - A fresh Claude session completed a real streamed turn with
   `CLAUDE_E2E_OK` in about 1.5 seconds.
+- Codex returned its live six-model catalog, accepted a switch to
+  `gpt-5.6-terra`, and completed native status, rename, fork, clear and compact
+  command acceptance.
+- The live Usage endpoint returned both accounts in about three seconds:
+  Claude subscription windows through `/usage` and Codex rate-limit plus
+  historical-token data through app-server. Its cached response avoids
+  continuous provider polling.
 - A one-geometry openMotor E2E created run #8 with one viable `67F133`
   configuration and 66.54 N·s simulated impulse.
 - An OpenRocket E2E created run #9 with 1503.33 m simulated apogee and no
@@ -184,7 +217,8 @@ There is no duplicate simulation implementation in React.
 - Existing real Codex app-server start, stream and resume probe.
 - React event projection and bilingual copy tests.
 - Playwright browser E2E for Markdown, repository scope, native model
-  selection, navigation resizing and dark engineering controls.
+  selection, navigation resizing, dark engineering controls and the dual
+  provider Usage view.
 - TypeScript/Vite production build.
 - Rust `cargo check`.
 - Tauri debug executable build.

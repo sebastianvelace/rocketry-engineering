@@ -3,6 +3,7 @@ import type {
   AgentEvent,
   Approval,
   Artifact,
+  CommandResult,
   EngineeringStatus,
   FlightConfig,
   GatewayConnection,
@@ -11,6 +12,7 @@ import type {
   RunComparison,
   RunSummary,
   Session,
+  UsageSnapshot,
   WiringGuide,
   OperationResult,
 } from "./types";
@@ -84,6 +86,21 @@ export class GatewayApi {
         },
       )
     ).session;
+  }
+
+  async executeCommand(
+    sessionId: string,
+    command: string,
+    argumentsText = "",
+  ): Promise<CommandResult> {
+    return this.request<CommandResult>(`/api/sessions/${sessionId}/commands`, {
+      method: "POST",
+      body: JSON.stringify({ command, arguments: argumentsText }),
+    });
+  }
+
+  async usage(force = false): Promise<UsageSnapshot> {
+    return this.request<UsageSnapshot>(`/api/usage${force ? "?refresh=1" : ""}`);
   }
 
   async events(sessionId: string, after = 0): Promise<AgentEvent[]> {

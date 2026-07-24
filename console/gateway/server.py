@@ -23,6 +23,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from gateway.manager import SessionManager
 from gateway.providers.base import ProviderError
 from gateway.store import GatewayStore
+from gateway.usage import UsageService
 
 VERSION = "0.1.0"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -71,11 +72,17 @@ def create_app(
     *,
     store: GatewayStore | None = None,
     manager: SessionManager | None = None,
+    usage_service: UsageService | None = None,
 ) -> Starlette:
     gateway_store = store or GatewayStore()
     session_manager = manager or SessionManager(
         gateway_store,
         allowed_workspaces=[REPOSITORY_ROOT],
+    )
+    provider_usage = usage_service or UsageService(
+        gateway_store,
+        session_manager,
+        workspace=REPOSITORY_ROOT,
     )
     artifact_store = artifacts.ArtifactStore()
     history_service = services.HistoryService()
@@ -156,6 +163,34 @@ def create_app(
                 model,
             )
             return JSONResponse({"ok": True, "session": gateway_store.serialize(session)})
+        except KeyError as exc:
+            return error_response("not_found", str(exc), 404)
+        except ValueError as exc:
+            return error_response("invalid_request", str(exc), 400)
+        except ProviderError as exc:
+            return error_response("provider_unavailable", str(exc), 503)
+        except RuntimeError as exc:
+            return error_response("session_busy", str(exc), 409)
+        except Exception as exc:
+            return error_response("provider_unavailable", str(exc), 503)
+
+    async def execute_session_command(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        try:
+            payload = await request.json()
+            result = await session_manager.execute_command(
+                request.path_params["session_id"],
+                str(payload.get("command") or ""),
+                str(payload.get("arguments") or ""),
+            )
+            serialized = {
+                key: gateway_store.serialize(value)
+                if key in {"session", "event"} and value is not None
+                else value
+                for key, value in result.items()
+            }
+            return JSONResponse({"ok": True, **serialized})
         except KeyError as exc:
             return error_response("not_found", str(exc), 404)
         except ValueError as exc:
@@ -274,6 +309,12 @@ def create_app(
                 ).is_file(),
             }
         )
+
+    async def provider_usage_snapshot(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        force = request.query_params.get("refresh") in {"1", "true", "yes"}
+        return JSONResponse(await provider_usage.read(force=force))
 
     async def wiring_guides(request: Request):
         if not authorized(request):
@@ -577,12 +618,14 @@ def create_app(
         Route("/api/sessions/{session_id:str}", get_session, methods=["GET"]),
         Route("/api/sessions/{session_id:str}/connect", connect_session, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/model", set_session_model, methods=["POST"]),
+        Route("/api/sessions/{session_id:str}/commands", execute_session_command, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/events", list_events, methods=["GET"]),
         Route("/api/sessions/{session_id:str}/messages", send_message, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/interrupt", interrupt, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/approvals", pending_approvals, methods=["GET"]),
         Route("/api/approvals/{approval_id:str}", resolve_approval, methods=["POST"]),
         Route("/api/status", engineering_status, methods=["GET"]),
+        Route("/api/usage", provider_usage_snapshot, methods=["GET"]),
         Route("/api/wiring", wiring_guides, methods=["GET"]),
         Route("/api/bench/capture", capture_bench, methods=["POST"]),
         Route("/api/motor/sweep", motor_sweep, methods=["POST"]),

@@ -7,6 +7,7 @@ import {
   DownloadSimple,
   Fire,
   FolderOpen,
+  Gauge,
   Plus,
   Pulse,
   Robot,
@@ -31,6 +32,7 @@ import {
 } from "./EngineeringViews";
 import { CopyKey, eventLabel, Language, statusLabel, translate } from "./i18n";
 import { RunPlot } from "./RunPlot";
+import { UsageView } from "./UsageView";
 import type {
   AgentEvent,
   Approval,
@@ -44,7 +46,7 @@ import type {
   Session,
 } from "./types";
 
-type View = "agent" | "bench" | "wiring" | "motor" | "flight" | "history";
+type View = "agent" | "bench" | "wiring" | "motor" | "flight" | "history" | "usage";
 type ResultTab = "runs" | "activity" | "artifacts";
 const MessageContent = lazy(() =>
   import("./MessageContent").then((module) => ({ default: module.MessageContent })),
@@ -98,6 +100,7 @@ const viewCopy: Record<View, { es: string; en: string }> = {
   motor: { es: "Motor", en: "Motor" },
   flight: { es: "Vuelo", en: "Flight" },
   history: { es: "Historial", en: "History" },
+  usage: { es: "Uso", en: "Usage" },
 };
 
 export default function App() {
@@ -139,7 +142,12 @@ export default function App() {
     const capability = [...events].reverse().find((event) => event.text === "Provider capabilities");
     return (capability?.data.models || []) as ProviderModel[];
   }, [events]);
-  const currentModel = String(selectedSession?.metadata?.model || "default");
+  const currentModel = String(
+    selectedSession?.metadata?.model
+    || models.find((model) => model.isDefault)?.value
+    || models.find((model) => model.value === "default")?.value
+    || "default",
+  );
   const commandMatches = useMemo(() => {
     if (!composer.startsWith("/") || composer.includes(" ")) return [];
     const query = composer.slice(1).toLowerCase();
@@ -263,14 +271,18 @@ export default function App() {
     event.preventDefault();
     if (!api || !selectedId || !composer.trim() || busy) return;
     const value = composer.trim();
-    const modelCommand = value.match(/^\/model(?:\s+(.+))?$/i);
-    if (selectedSession?.provider === "claude" && modelCommand) {
-      if (!modelCommand[1]) {
+    const slashCommand = value.match(/^\/([^\s]+)(?:\s+([\s\S]+))?$/);
+    if (slashCommand) {
+      if (slashCommand[1].toLowerCase() === "model" && !slashCommand[2]) {
         setComposer("");
         setModelPickerOpen(true);
         return;
       }
-      await changeModel(modelCommand[1].trim());
+      if (slashCommand[1].toLowerCase() === "model") {
+        await changeModel(slashCommand[2].trim());
+        return;
+      }
+      await executeAgentCommand(slashCommand[1], slashCommand[2] || "");
       setComposer("");
       return;
     }
@@ -321,8 +333,31 @@ export default function App() {
     }
   }
 
+  async function executeAgentCommand(command: string, argumentsText: string) {
+    if (!api || !selectedId) return;
+    setBusy(true);
+    setConnectionError("");
+    try {
+      const result = await api.executeCommand(selectedId, command, argumentsText);
+      if (result.action === "usage") {
+        setView("usage");
+      } else if (result.action === "created") {
+        setSessions((current) => [result.session, ...current.filter((item) => item.id !== result.session.id)]);
+        setSelectedId(result.session.id);
+      } else {
+        setSessions((current) => current.map((session) => session.id === result.session.id ? result.session : session));
+      }
+      setComposer("");
+      await refreshSessions();
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function chooseCommand(command: ProviderCommand) {
-    if (command.name === "model" && selectedSession?.provider === "claude") {
+    if (command.name === "model") {
       setComposer("");
       setModelPickerOpen(true);
       return;
@@ -362,6 +397,7 @@ export default function App() {
     { id: "motor" as View, icon: Fire },
     { id: "flight" as View, icon: RocketLaunch },
     { id: "history" as View, icon: ClockCounterClockwise },
+    { id: "usage" as View, icon: Gauge },
   ];
   const shared = { api, language, status, onRunSaved: openSavedRun };
 
@@ -459,6 +495,7 @@ export default function App() {
               {view === "motor" && <MotorView {...shared} />}
               {view === "flight" && <FlightView {...shared} />}
               {view === "history" && <HistoryView {...shared} runs={runs} selectedRun={selectedRun} setSelectedRun={setSelectedRun} refresh={refreshEngineering} />}
+              {view === "usage" && <UsageView api={api} language={language} />}
               {view === "agent" && (
                 <div className="agent-workspace">
                   {!selectedSession ? <section className="empty-workbench"><Robot size={28} /><h1>{t("selectSession")}</h1><button className="button primary" onClick={() => setNewTaskOpen(true)}><Plus size={17} />{t("newTask")}</button></section> : <>
@@ -478,7 +515,7 @@ export default function App() {
                           {modelPickerOpen && (
                             <motion.div className="model-picker" initial={reducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}>
                               <header>
-                                <div><span>{language === "es" ? "MODELO DE CLAUDE" : "CLAUDE MODEL"}</span><strong>{language === "es" ? "Selecciona para esta sesión" : "Select for this session"}</strong></div>
+                                <div><span>{selectedSession.provider.toUpperCase()} / MODEL</span><strong>{language === "es" ? "Selecciona para esta sesión" : "Select for this session"}</strong></div>
                                 <button type="button" onClick={() => setModelPickerOpen(false)}><X size={16} /></button>
                               </header>
                               <div>
@@ -500,7 +537,7 @@ export default function App() {
                         </AnimatePresence>
                         {!modelPickerOpen && commandMatches.length > 0 && <div className="command-palette">{commandMatches.map((command) => <button type="button" onClick={() => chooseCommand(command)} key={command.name}><code>/{command.name}</code><span>{command.description}</span><small>{command.argumentHint}</small></button>)}</div>}
                         <textarea rows={3} value={composer} onChange={(event) => setComposer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={t("placeholder")} disabled={isRunning || busy || warming} />
-                        <div><span>{selectedSession.provider === "claude" ? `${currentModel} / ${commands.length} commands` : `${selectedSession.provider} / ${statusLabel(language, selectedSession.status)}`}</span>{isRunning ? <button type="button" className="button danger" onClick={() => void api.interrupt(selectedSession.id)}><Stop size={15} />{t("stop")}</button> : <button className="button primary" disabled={!composer.trim() || busy || warming}>{busy || warming ? <CircleNotch className="spin" /> : <Check />}{t("send")}</button>}</div>
+                        <div><span>{`${currentModel} / ${commands.length} commands`}</span>{isRunning ? <button type="button" className="button danger" onClick={() => void api.interrupt(selectedSession.id)}><Stop size={15} />{t("stop")}</button> : <button className="button primary" disabled={!composer.trim() || busy || warming}>{busy || warming ? <CircleNotch className="spin" /> : <Check />}{t("send")}</button>}</div>
                       </form>
                     </section>
                     <section className="result-dock">

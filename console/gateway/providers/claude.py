@@ -255,6 +255,7 @@ class ClaudeAdapter:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._receiver: asyncio.Task | None = None
         self.available_models: list[dict[str, Any]] = []
+        self.available_commands: list[dict[str, Any]] = []
         self._pending_permissions: dict[
             str,
             tuple[asyncio.Future, dict[str, Any], list[Any]],
@@ -328,12 +329,13 @@ class ClaudeAdapter:
             await self.client.connect()
             info = await self.client.get_server_info() or {}
             self.available_models = list(info.get("models") or [])
+            self.available_commands = list(info.get("commands") or [])
             await self.event_sink(
                 ProviderEvent(
                     "session",
                     "Provider capabilities",
                     data={
-                        "commands": list(info.get("commands") or []),
+                        "commands": self.available_commands,
                         "models": self.available_models,
                         "output_style": info.get("output_style"),
                     },

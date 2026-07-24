@@ -8,6 +8,17 @@ from typing import Any
 from gateway.providers.base import ApprovalSink, EventSink, ProviderApproval, ProviderError, ProviderEvent
 from gateway.providers.json_process import JsonLineProcess
 
+CODEX_COMMANDS = [
+    {"name": "model", "description": "Select the model for this session.", "argumentHint": "<model>"},
+    {"name": "compact", "description": "Compact the current thread context.", "argumentHint": ""},
+    {"name": "review", "description": "Review uncommitted changes or follow custom instructions.", "argumentHint": "[instructions]"},
+    {"name": "status", "description": "Show the current provider and workspace state.", "argumentHint": ""},
+    {"name": "usage", "description": "Open real account and local usage.", "argumentHint": ""},
+    {"name": "rename", "description": "Rename this conversation.", "argumentHint": "<name>"},
+    {"name": "fork", "description": "Fork this conversation into a new session.", "argumentHint": "[name]"},
+    {"name": "clear", "description": "Start a new empty conversation.", "argumentHint": "[name]"},
+]
+
 
 def normalize_codex(payload: dict[str, Any]) -> list[ProviderEvent]:
     method = str(payload.get("method") or "")
@@ -37,6 +48,8 @@ def normalize_codex(payload: dict[str, Any]) -> list[ProviderEvent]:
     elif method == "turn/completed":
         turn = params.get("turn") if isinstance(params.get("turn"), dict) else {}
         events.append(ProviderEvent("session", f"Turn {turn.get('status', 'completed')}", data={"turn": turn}, raw=payload))
+    elif method == "thread/compacted":
+        events.append(ProviderEvent("session", "Context compacted", data=params, raw=payload))
     elif method in {"thread/tokenUsage/updated", "turn/plan/updated"}:
         events.append(ProviderEvent("usage", method, data=params, raw=payload))
     elif method == "error":
@@ -59,6 +72,9 @@ class CodexAdapter:
         self.approval_sink = approval_sink
         self.provider_session_id = provider_session_id
         self.turn_id: str | None = None
+        self.selected_model: str | None = None
+        self.available_models: list[dict[str, Any]] = []
+        self._initialized = False
         self._next_id = 1
         self._pending: dict[int, asyncio.Future] = {}
         self._approval_requests: dict[int | str, tuple[str, dict[str, Any]]] = {}
@@ -120,7 +136,9 @@ class CodexAdapter:
             self._pending.pop(request_id, None)
         return result or {}
 
-    async def start(self) -> str:
+    async def _initialize(self) -> None:
+        if self._initialized:
+            return
         await self.process.start()
         await self._request(
             "initialize",
@@ -134,6 +152,10 @@ class CodexAdapter:
             },
         )
         await self.process.send({"method": "initialized", "params": {}})
+        self._initialized = True
+
+    async def start(self) -> str:
+        await self._initialize()
         if self.provider_session_id:
             result = await self._request(
                 "thread/resume",
@@ -156,20 +178,115 @@ class CodexAdapter:
             )
         thread = result.get("thread") or {}
         self.provider_session_id = str(thread["id"])
+        catalog = await self._request("model/list", {"limit": 100, "includeHidden": False})
+        self.available_models = list(catalog.get("data") or [])
+        await self.event_sink(
+            ProviderEvent(
+                "session",
+                "Provider capabilities",
+                data={
+                    "commands": CODEX_COMMANDS,
+                    "models": [
+                        {
+                            "value": item.get("model") or item.get("id"),
+                            "resolvedModel": item.get("model") or item.get("id"),
+                            "displayName": item.get("displayName") or item.get("model"),
+                            "description": item.get("description") or "",
+                            "supportsEffort": bool(item.get("supportedReasoningEfforts")),
+                            "supportedEffortLevels": [
+                                effort.get("reasoningEffort")
+                                for effort in item.get("supportedReasoningEfforts") or []
+                                if isinstance(effort, dict) and effort.get("reasoningEffort")
+                            ],
+                            "supportsFastMode": any(
+                                tier.get("id") == "fast"
+                                for tier in item.get("serviceTiers") or []
+                                if isinstance(tier, dict)
+                            ),
+                            "isDefault": bool(item.get("isDefault")),
+                        }
+                        for item in self.available_models
+                        if isinstance(item, dict)
+                    ],
+                },
+            )
+        )
         return self.provider_session_id
+
+    async def set_model(self, model: str) -> None:
+        allowed = {
+            str(item.get("model") or item.get("id"))
+            for item in self.available_models
+            if isinstance(item, dict) and (item.get("model") or item.get("id"))
+        }
+        if model not in allowed:
+            raise ProviderError(f"Codex model is not available: {model}")
+        self.selected_model = model
 
     async def send_turn(self, prompt: str) -> str:
         if not self.provider_session_id:
             raise ProviderError("Codex thread has not started.")
+        params: dict[str, Any] = {
+            "threadId": self.provider_session_id,
+            "input": [{"type": "text", "text": prompt}],
+        }
+        if self.selected_model:
+            params["model"] = self.selected_model
+        result = await self._request("turn/start", params)
+        self.turn_id = str((result.get("turn") or {})["id"])
+        return self.turn_id
+
+    async def compact(self) -> None:
+        if not self.provider_session_id:
+            raise ProviderError("Codex thread has not started.")
+        await self._request("thread/compact/start", {"threadId": self.provider_session_id})
+
+    async def review(self, instructions: str = "") -> str:
+        if not self.provider_session_id:
+            raise ProviderError("Codex thread has not started.")
+        target: dict[str, Any] = (
+            {"type": "custom", "instructions": instructions}
+            if instructions
+            else {"type": "uncommittedChanges"}
+        )
         result = await self._request(
-            "turn/start",
-            {
-                "threadId": self.provider_session_id,
-                "input": [{"type": "text", "text": prompt}],
-            },
+            "review/start",
+            {"threadId": self.provider_session_id, "target": target, "delivery": "inline"},
         )
         self.turn_id = str((result.get("turn") or {})["id"])
         return self.turn_id
+
+    async def rename(self, name: str) -> None:
+        if not self.provider_session_id:
+            raise ProviderError("Codex thread has not started.")
+        await self._request(
+            "thread/name/set",
+            {"threadId": self.provider_session_id, "name": name},
+        )
+
+    async def fork(self) -> str:
+        if not self.provider_session_id:
+            raise ProviderError("Codex thread has not started.")
+        result = await self._request(
+            "thread/fork",
+            {
+                "threadId": self.provider_session_id,
+                "cwd": str(self.workspace),
+                "approvalPolicy": "on-request",
+                "sandbox": "workspace-write",
+                "model": self.selected_model,
+            },
+        )
+        thread = result.get("thread") or {}
+        return str(thread["id"])
+
+    async def account_usage(self) -> dict[str, Any]:
+        await self._initialize()
+        rate_limits, token_usage = await asyncio.gather(
+            self._request("account/rateLimits/read", {}),
+            self._request("account/usage/read", {}),
+        )
+        return {"rate_limits": rate_limits, "token_usage": token_usage}
 
     async def interrupt(self) -> None:
         if self.provider_session_id and self.turn_id:

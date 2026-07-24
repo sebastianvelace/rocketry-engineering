@@ -147,6 +147,7 @@ class SessionManager:
             if session.status in {"running", "waiting_approval", "interrupting"}:
                 raise RuntimeError("The session already has an active turn.")
             adapter = await self._ensure_adapter(session_id)
+            session = self.store.get_session(session_id)
             event = self.store.append_event(
                 session_id,
                 type="user_message",
@@ -180,11 +181,11 @@ class SessionManager:
     async def set_model(self, session_id: str, model: str) -> SessionRecord:
         async with self._session_locks[session_id]:
             session = self.store.get_session(session_id)
-            if session.provider != "claude":
-                raise ValueError("Model switching is currently available for Claude sessions.")
             if session.status in {"running", "waiting_approval", "interrupting"}:
                 raise RuntimeError("The model cannot change during an active turn.")
             adapter = await self._ensure_adapter(session_id)
+            if not hasattr(adapter, "set_model"):
+                raise ValueError(f"Model switching is unavailable for {session.provider}.")
             await adapter.set_model(model)
             updated = self.store.update_session(
                 session_id,
@@ -198,6 +199,167 @@ class SessionManager:
             )
             await self._publish(event)
             return updated
+
+    async def execute_command(
+        self,
+        session_id: str,
+        command: str,
+        arguments: str = "",
+    ) -> dict[str, Any]:
+        name = command.strip().lstrip("/").lower()
+        args = arguments.strip()
+        if not name:
+            raise ValueError("command is required.")
+
+        async with self._session_locks[session_id]:
+            session = self.store.get_session(session_id)
+            if session.status in {"running", "waiting_approval", "interrupting"}:
+                raise RuntimeError("The session already has an active turn.")
+
+            if name == "usage":
+                return {"action": "usage", "session": session}
+
+            if name == "clear":
+                created = await self.create_session(
+                    provider=session.provider,
+                    workspace=session.workspace,
+                    title=args or f"{session.title} · new",
+                )
+                return {"action": "created", "session": created}
+
+            adapter = await self._ensure_adapter(session_id)
+            session = self.store.get_session(session_id)
+
+            if name == "status":
+                model = session.metadata.get("model") or "provider default"
+                text = (
+                    f"**{session.provider.upper()}**\n\n"
+                    f"- Workspace: `{session.workspace}`\n"
+                    f"- Model: `{model}`\n"
+                    f"- Status: `{session.status}`\n"
+                    f"- Provider session: `{session.provider_session_id or 'connecting'}`"
+                )
+                event = self.store.append_event(
+                    session_id,
+                    type="assistant_message",
+                    role="assistant",
+                    text=text,
+                    data={"command": "status"},
+                )
+                await self._publish(event)
+                return {"action": "event", "session": session, "event": event}
+
+            if name == "rename":
+                if not args:
+                    raise ValueError("/rename requires a name.")
+                if session.provider == "codex":
+                    await adapter.rename(args)
+                else:
+                    await self._start_provider_command(session, adapter, name, args)
+                updated = self.store.update_session(session_id, title=args)
+                event = self.store.append_event(
+                    session_id,
+                    type="session",
+                    text="Session renamed",
+                    data={"title": args},
+                )
+                await self._publish(event)
+                return {"action": "renamed", "session": updated, "event": event}
+
+            if name == "fork":
+                if session.provider != "codex":
+                    raise ValueError("/fork is not available through the Claude Agent SDK.")
+                provider_session_id = await adapter.fork()
+                created = self.store.create_session(
+                    provider="codex",
+                    workspace=session.workspace,
+                    title=args or f"{session.title} · fork",
+                    metadata=session.metadata,
+                )
+                created = self.store.update_session(
+                    created.id,
+                    status="ready",
+                    provider_session_id=provider_session_id,
+                )
+                event = self.store.append_event(
+                    created.id,
+                    type="session",
+                    text="Session forked",
+                    data={"source_session_id": session_id},
+                )
+                await self._publish(event)
+                return {"action": "created", "session": created, "event": event}
+
+            if session.provider == "codex":
+                if name == "compact":
+                    self.store.update_session(session_id, status="running")
+                    try:
+                        await adapter.compact()
+                    except Exception:
+                        self.store.update_session(session_id, status="ready")
+                        raise
+                    return {"action": "running", "session": self.store.get_session(session_id)}
+                if name == "review":
+                    self.store.update_session(session_id, status="running")
+                    try:
+                        turn_id = await adapter.review(args)
+                    except Exception:
+                        self.store.update_session(session_id, status="ready")
+                        raise
+                    event = self.store.append_event(
+                        session_id,
+                        type="session",
+                        text="Review submitted",
+                        data={"turn_id": turn_id},
+                    )
+                    await self._publish(event)
+                    return {"action": "running", "session": self.store.get_session(session_id), "event": event}
+                raise ValueError(f"/{name} is not supported by the Codex app-server integration.")
+
+            available = {
+                str(item.get("name") or "").lower()
+                for item in getattr(adapter, "available_commands", [])
+                if isinstance(item, dict)
+            }
+            if name not in available:
+                raise ValueError(f"/{name} is not dispatchable through the Claude Agent SDK.")
+            event = await self._start_provider_command(session, adapter, name, args)
+            return {
+                "action": "running",
+                "session": self.store.get_session(session_id),
+                "event": event,
+            }
+
+    async def _start_provider_command(
+        self,
+        session: SessionRecord,
+        adapter: Any,
+        command: str,
+        arguments: str,
+    ) -> EventRecord:
+        prompt = f"/{command}{f' {arguments}' if arguments else ''}"
+        user_event = self.store.append_event(
+            session.id,
+            type="user_message",
+            role="user",
+            text=prompt,
+            data={"command": command},
+        )
+        await self._publish(user_event)
+        self.store.update_session(session.id, status="running")
+        try:
+            turn_id = await adapter.send_turn(prompt)
+        except Exception:
+            self.store.update_session(session.id, status="failed")
+            raise
+        event = self.store.append_event(
+            session.id,
+            type="session",
+            text="Command submitted",
+            data={"command": command, "turn_id": turn_id},
+        )
+        await self._publish(event)
+        return event
 
     async def _handle_provider_event(
         self,
@@ -220,6 +382,8 @@ class SessionManager:
                 mapped = "ready" if status == "completed" else status
                 self.store.update_session(session_id, status=mapped)
             elif provider_event.text == "Turn completed":
+                self.store.update_session(session_id, status="ready")
+            elif provider_event.text == "Context compacted":
                 self.store.update_session(session_id, status="ready")
         elif provider_event.type == "error":
             self.store.update_session(session_id, status="failed")

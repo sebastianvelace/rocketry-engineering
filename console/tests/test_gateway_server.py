@@ -22,6 +22,7 @@ class FakeAdapter:
         self.provider_session_id = provider_session_id or f"{provider}-thread"
         self.prompts = []
         self.models = []
+        self.available_commands = [{"name": "compact"}]
 
     async def start(self):
         return self.provider_session_id
@@ -38,6 +39,20 @@ class FakeAdapter:
 
     async def close(self):
         return None
+
+
+class FakeUsageService:
+    async def read(self, *, force=False):
+        return {
+            "ok": True,
+            "refreshed_at": "2026-07-24T00:00:00+00:00",
+            "cached": not force,
+            "providers": {
+                "claude": {"available": True, "windows": []},
+                "codex": {"available": True, "rate_limits": {}},
+            },
+            "local": {"claude": {}, "codex": {}},
+        }
 
 
 class GatewayServerTests(unittest.TestCase):
@@ -62,6 +77,7 @@ class GatewayServerTests(unittest.TestCase):
             self.config,
             store=self.store,
             manager=self.manager,
+            usage_service=FakeUsageService(),
         )
         self.headers = {"Authorization": "Bearer test-token"}
 
@@ -174,6 +190,34 @@ class GatewayServerTests(unittest.TestCase):
         self.assertEqual(changed.json()["session"]["metadata"]["model"], "opus")
         self.assertEqual(self.adapters[0].models, ["opus"])
         self.assertEqual(self.adapters[0].prompts, [])
+
+    def test_dispatchable_claude_command_uses_provider_without_becoming_plain_prompt(self):
+        async def exercise():
+            session = await self.create_session(provider="claude")
+            response = await self.request(
+                "POST",
+                f"/api/sessions/{session['id']}/commands",
+                headers=self.headers,
+                json={"command": "compact", "arguments": "retain decisions"},
+            )
+            return response
+
+        response = asyncio.run(exercise())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["action"], "running")
+        self.assertEqual(self.adapters[0].prompts, ["/compact retain decisions"])
+
+    def test_usage_endpoint_exposes_provider_snapshot(self):
+        response = asyncio.run(
+            self.request(
+                "GET",
+                "/api/usage?refresh=1",
+                headers=self.headers,
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["cached"])
+        self.assertTrue(response.json()["providers"]["codex"]["available"])
 
     def test_wiring_endpoint_returns_browser_safe_svg(self):
         response = asyncio.run(

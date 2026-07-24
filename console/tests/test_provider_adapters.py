@@ -64,6 +64,66 @@ class ProviderNormalizationTests(unittest.TestCase):
         thread_start = next(params for method, params in requests if method == "thread/start")
         self.assertEqual(thread_start["sandbox"], "workspace-write")
 
+    def test_codex_catalog_drives_model_and_native_compaction(self):
+        async def exercise():
+            requests = []
+            events = []
+
+            async def emit(event):
+                events.append(event)
+
+            async def approve(request):
+                pass
+
+            adapter = CodexAdapter(
+                workspace=Path("/tmp"),
+                event_sink=emit,
+                approval_sink=approve,
+            )
+
+            async def start_process():
+                pass
+
+            async def send(payload):
+                pass
+
+            async def request(method, params, **kwargs):
+                requests.append((method, params))
+                if method == "thread/start":
+                    return {"thread": {"id": "thread-1"}}
+                if method == "model/list":
+                    return {
+                        "data": [{
+                            "id": "model-1",
+                            "model": "gpt-test",
+                            "displayName": "GPT Test",
+                            "description": "Test model",
+                            "isDefault": True,
+                            "supportedReasoningEfforts": [],
+                            "serviceTiers": [],
+                        }]
+                    }
+                if method == "turn/start":
+                    return {"turn": {"id": "turn-1"}}
+                return {}
+
+            adapter.process.start = start_process
+            adapter.process.send = send
+            adapter._request = request
+            await adapter.start()
+            await adapter.set_model("gpt-test")
+            await adapter.send_turn("hello")
+            await adapter.compact()
+            return requests, events
+
+        requests, events = asyncio.run(exercise())
+        turn = next(params for method, params in requests if method == "turn/start")
+        self.assertEqual(turn["model"], "gpt-test")
+        self.assertTrue(any(method == "thread/compact/start" for method, _ in requests))
+        capabilities = next(event for event in events if event.text == "Provider capabilities")
+        self.assertEqual(capabilities.data["models"][0]["value"], "gpt-test")
+        self.assertIn("compact", [item["name"] for item in capabilities.data["commands"]])
+
     def test_codex_normalizes_stream_tools_and_completion(self):
         delta = normalize_codex(
             {
