@@ -453,6 +453,7 @@ option {
 .composer textarea::placeholder { color: #5f6a79; }
 .composer > div:last-child { display: flex; min-height: 36px; padding-top: 9px; align-items: center; justify-content: space-between; }
 .composer > div:last-child > span { color: var(--quiet); font-family: "Geist Mono Variable", monospace; font-size: 9px; }
+.active-turn-actions { display: flex; gap: 8px; align-items: center; }
 
 .command-palette {
   position: absolute;
@@ -551,6 +552,22 @@ option {
 .result-dock > header nav button.active { color: var(--text); }
 .result-dock > header nav button.active::after { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; background: var(--accent); content: ""; }
 .dock-content, .activity-view, .artifact-view { min-height: 0; padding: 16px 20px 28px; overflow-y: auto; }
+.dock-content.agent-result-arrived { animation: result-arrived 700ms cubic-bezier(.16, 1, .3, 1); }
+.agent-result-notice {
+  display: flex;
+  min-height: 34px;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 0 10px;
+  align-items: center;
+  border-left: 2px solid var(--accent);
+  color: #ff9ba0;
+  background: rgba(239, 68, 73, .07);
+  font: 9px "Geist Mono Variable", monospace;
+  letter-spacing: .035em;
+}
+.agent-result-notice span { flex: 1; }
+.agent-result-notice strong { color: var(--text); font-weight: 620; }
 .dock-content > select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); }
 .run-dock-title { margin: 26px 0 14px; }
 .run-dock-title span, .detail-title span, .operation-output header span { color: var(--quiet); font-family: "Geist Mono Variable", monospace; font-size: 9px; }
@@ -571,6 +588,11 @@ option {
 .artifact-view strong { font-size: 12px; }
 .artifact-view span { margin-top: 4px; color: var(--quiet); font-family: "Geist Mono Variable", monospace; font-size: 9px; }
 .artifact-view button { border: 0; color: var(--muted); background: transparent; }
+
+@keyframes result-arrived {
+  0% { opacity: .72; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
 
 .engineering-view {
   height: 100%;

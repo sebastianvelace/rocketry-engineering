@@ -119,12 +119,16 @@ class ProviderNormalizationTests(unittest.TestCase):
             await adapter.start()
             await adapter.set_model("gpt-test")
             await adapter.send_turn("hello")
+            await adapter.steer("prefer the smaller patch")
             await adapter.compact()
             return requests, events
 
         requests, events = asyncio.run(exercise())
         turn = next(params for method, params in requests if method == "turn/start")
         self.assertEqual(turn["model"], "gpt-test")
+        steer = next(params for method, params in requests if method == "turn/steer")
+        self.assertEqual(steer["expectedTurnId"], "turn-1")
+        self.assertEqual(steer["input"][0]["text"], "prefer the smaller patch")
         self.assertTrue(any(method == "thread/compact/start" for method, _ in requests))
         capabilities = next(event for event in events if event.text == "Provider capabilities")
         self.assertEqual(capabilities.data["models"][0]["value"], "gpt-test")

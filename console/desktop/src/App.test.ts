@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildTimeline, extractDiff, unifiedDiffToLines } from "./ActivityFeed";
-import { activityEvents } from "./App";
+import { activityEvents, extractRunId } from "./App";
 import { translate } from "./i18n";
 import type { AgentEvent } from "./types";
 
@@ -107,6 +107,27 @@ describe("unified activity timeline", () => {
         event(3, "command_output", "ok"),
       ]).map((item) => item.type),
     ).toEqual(["tool_started", "command_output"]);
+  });
+});
+
+describe("agent run affinity", () => {
+  it("extracts a run id from Claude MCP tool result content", () => {
+    expect(extractRunId({
+      tool_result: {
+        content: JSON.stringify({ run_id: 91, apogee: 1503.4 }),
+      },
+    })).toBe(91);
+  });
+
+  it("extracts a run id from a nested Codex MCP result", () => {
+    expect(extractRunId({
+      item: {
+        type: "mcpToolCall",
+        result: {
+          content: [{ type: "text", text: "{'run_id': 42, 'kind': 'MOTOR_SWEEP'}" }],
+        },
+      },
+    })).toBe(42);
   });
 });
 

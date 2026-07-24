@@ -238,6 +238,19 @@ class CodexAdapter:
         self.turn_id = str((result.get("turn") or {})["id"])
         return self.turn_id
 
+    async def steer(self, prompt: str) -> None:
+        """Add operator guidance to the currently active Codex turn."""
+        if not self.provider_session_id or not self.turn_id:
+            raise ProviderError("Codex has no active turn to steer.")
+        await self._request(
+            "turn/steer",
+            {
+                "threadId": self.provider_session_id,
+                "input": [{"type": "text", "text": prompt}],
+                "expectedTurnId": self.turn_id,
+            },
+        )
+
     async def compact(self) -> None:
         if not self.provider_session_id:
             raise ProviderError("Codex thread has not started.")

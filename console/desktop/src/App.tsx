@@ -84,6 +84,37 @@ function compactDetail(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+export function extractRunId(value: unknown, depth = 0): number | null {
+  if (depth > 6 || value === null || value === undefined) return null;
+  if (typeof value === "string") {
+    if (!value.includes("run_id")) return null;
+    try {
+      return extractRunId(JSON.parse(value), depth + 1);
+    } catch {
+      const match = value.match(/["']?run_id["']?\s*[:=]\s*(\d+)/);
+      return match ? Number(match[1]) : null;
+    }
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = extractRunId(item, depth + 1);
+      if (found !== null) return found;
+    }
+    return null;
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const direct = record.run_id;
+    if (typeof direct === "number" && Number.isInteger(direct)) return direct;
+    if (typeof direct === "string" && /^\d+$/.test(direct)) return Number(direct);
+    for (const nested of Object.values(record)) {
+      const found = extractRunId(nested, depth + 1);
+      if (found !== null) return found;
+    }
+  }
+  return null;
+}
+
 const viewCopy: Record<View, { es: string; en: string }> = {
   agent: { es: "Agente", en: "Agent" },
   bench: { es: "Banco", en: "Bench" },
@@ -108,6 +139,7 @@ export default function App() {
   const [status, setStatus] = useState<EngineeringStatus | null>(null);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [selectedRun, setSelectedRun] = useState<RunRecord | null>(null);
+  const [newAgentRunId, setNewAgentRunId] = useState<number | null>(null);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [tab, setTab] = useState<ResultTab>("runs");
   const [composer, setComposer] = useState("");
@@ -127,6 +159,8 @@ export default function App() {
   const [railWidth, setRailWidth] = useState(() => Number(localStorage.getItem("rocketry-rail-width")) || 72);
   const feedEnd = useRef<HTMLDivElement>(null);
   const warmed = useRef<Set<string>>(new Set());
+  const knownRunIds = useRef<Set<number>>(new Set());
+  const agentRunTimer = useRef<number | undefined>(undefined);
 
   const selectedSession = sessions.find((session) => session.id === selectedId) || null;
   const timeline = useMemo(() => buildTimeline(events), [events]);
@@ -174,6 +208,7 @@ export default function App() {
       setSessions(nextSessions);
       setStatus(nextStatus);
       setRuns(nextRuns);
+      knownRunIds.current = new Set(nextRuns.map((run) => run.id));
       setArtifacts(nextArtifacts);
       setSelectedId((current) => current || nextSessions[0]?.id || null);
     } catch (error) {
@@ -189,12 +224,25 @@ export default function App() {
   useEffect(() => { localStorage.setItem("rocketry-view", view); }, [view]);
   useEffect(() => { localStorage.setItem("rocketry-rail-width", String(railWidth)); }, [railWidth]);
 
-  const refreshEngineering = useCallback(async () => {
+  const refreshEngineering = useCallback(async (followNewest = false, preferredRunId: number | null = null) => {
     if (!api) return;
     const [nextStatus, nextRuns, nextArtifacts] = await Promise.all([api.status(), api.runs(), api.artifacts()]);
+    const newRun = followNewest
+      ? nextRuns.find((run) => run.id === preferredRunId)
+        || nextRuns.find((run) => !knownRunIds.current.has(run.id))
+      : undefined;
+    knownRunIds.current = new Set(nextRuns.map((run) => run.id));
     setStatus(nextStatus);
     setRuns(nextRuns);
     setArtifacts(nextArtifacts);
+    if (newRun) {
+      const record = await api.run(newRun.id);
+      setSelectedRun(record);
+      setTab("runs");
+      setNewAgentRunId(newRun.id);
+      window.clearTimeout(agentRunTimer.current);
+      agentRunTimer.current = window.setTimeout(() => setNewAgentRunId(null), 10_000);
+    }
   }, [api]);
   const refreshSessions = useCallback(async () => { if (api) setSessions(await api.sessions()); }, [api]);
 
@@ -242,7 +290,9 @@ export default function App() {
         lastSequence = Math.max(lastSequence, event.sequence);
         setEvents((current) => current.some((item) => item.id === event.id) ? current : [...current, event]);
         if (event.type === "approval_requested" || event.type === "approval_resolved") void api.approvals(selectedId).then(setApprovals);
-        if (event.type === "tool_completed") void refreshEngineering();
+        if (event.type === "tool_completed") {
+          void refreshEngineering(true, extractRunId(event.data));
+        }
         if (event.type === "session" || event.type === "error") void refreshSessions();
       }, (connected) => {
         setSocketConnected(connected);
@@ -261,6 +311,8 @@ export default function App() {
     if (!api || !runs.length || selectedRun) return;
     void api.run(runs[0].id).then(setSelectedRun);
   }, [api, runs, selectedRun]);
+
+  useEffect(() => () => window.clearTimeout(agentRunTimer.current), []);
 
   async function createTask(event: FormEvent) {
     event.preventDefault();
@@ -331,6 +383,23 @@ export default function App() {
     event.preventDefault();
     if (!api || !selectedId || !composer.trim() || busy) return;
     const value = composer.trim();
+    const steeringActiveTurn = (
+      selectedSession?.provider === "codex"
+      && selectedSession.status === "running"
+    );
+    if (steeringActiveTurn) {
+      setComposer("");
+      setBusy(true);
+      try {
+        await api.steer(selectedId, value);
+      } catch (error) {
+        setConnectionError(error instanceof Error ? error.message : String(error));
+        setComposer(value);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     const slashCommand = value.match(/^\/([^\s]+)(?:\s+([\s\S]+))?$/);
     if (slashCommand) {
       if (slashCommand[1].toLowerCase() === "model" && !slashCommand[2]) {
@@ -450,6 +519,7 @@ export default function App() {
   );
 
   const isRunning = ["running", "waiting_approval", "interrupting"].includes(selectedSession?.status || "");
+  const canSteer = selectedSession?.provider === "codex" && selectedSession.status === "running";
   const nav = [
     { id: "agent" as View, icon: ChatCircleDots },
     { id: "bench" as View, icon: WaveSine },
@@ -632,13 +702,66 @@ export default function App() {
                           )}
                         </AnimatePresence>
                         {!modelPickerOpen && commandMatches.length > 0 && <div className="command-palette">{commandMatches.map((command) => <button type="button" onClick={() => chooseCommand(command)} key={command.name}><code>/{command.name}</code><span>{command.description}</span><small>{command.argumentHint}</small></button>)}</div>}
-                        <textarea rows={3} value={composer} onChange={(event) => setComposer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={t("placeholder")} disabled={isRunning || busy || warming} />
-                        <div><span>{`${currentModel} / ${commands.length} commands`}</span>{isRunning ? <button type="button" className="button danger" onClick={() => void api.interrupt(selectedSession.id)}><Stop size={15} />{t("stop")}</button> : <button className="button primary" disabled={!composer.trim() || busy || warming}>{busy || warming ? <CircleNotch className="spin" /> : <Check />}{t("send")}</button>}</div>
+                        <textarea
+                          rows={3}
+                          value={composer}
+                          onChange={(event) => setComposer(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              event.currentTarget.form?.requestSubmit();
+                            }
+                          }}
+                          placeholder={canSteer ? t("guidePlaceholder") : t("placeholder")}
+                          disabled={(isRunning && !canSteer) || busy || warming}
+                        />
+                        <div>
+                          <span>{canSteer ? "CODEX / ACTIVE TURN" : `${currentModel} / ${commands.length} commands`}</span>
+                          {isRunning ? (
+                            <div className="active-turn-actions">
+                              <button type="button" className="button danger" onClick={() => void api.interrupt(selectedSession.id)}><Stop size={15} />{t("stop")}</button>
+                              {canSteer && <button className="button primary" disabled={!composer.trim() || busy}>{busy ? <CircleNotch className="spin" /> : <Check />}{t("guideTurn")}</button>}
+                            </div>
+                          ) : (
+                            <button className="button primary" disabled={!composer.trim() || busy || warming}>{busy || warming ? <CircleNotch className="spin" /> : <Check />}{t("send")}</button>
+                          )}
+                        </div>
                       </form>
                     </section>
                     <section className="result-dock">
                       <header><nav><button className={tab === "runs" ? "active" : ""} onClick={() => setTab("runs")}><ChartLine />{t("runs")}</button><button className={tab === "activity" ? "active" : ""} onClick={() => setTab("activity")}><Pulse />{t("activity")}</button><button className={tab === "artifacts" ? "active" : ""} onClick={() => setTab("artifacts")}><FolderOpen />{t("artifacts")}</button></nav><button onClick={() => void refreshEngineering()}><ArrowClockwise /></button></header>
-                      {tab === "runs" && <div className="dock-content">{runs.length ? <><select value={selectedRun?.id || runs[0].id} onChange={(event) => void api.run(Number(event.target.value)).then(setSelectedRun)}>{runs.map((run) => <option value={run.id} key={run.id}>#{run.id} {run.kind} {run.note}</option>)}</select>{selectedRun && <><div className="run-dock-title"><span>RUN #{selectedRun.id}</span><h2>{selectedRun.kind.replaceAll("_", " ")}</h2></div><RunPlot run={selectedRun} /><div className="data-foot"><span>{selectedRun.row_count} {t("samples")}</span>{Object.entries(selectedRun.meta).slice(0, 5).map(([key, value]) => <span key={key}>{key}: {compactDetail(value)}</span>)}</div></>}</> : <p>{t("noRuns")}</p>}</div>}
+                      {tab === "runs" && (
+                        <div className={`dock-content ${newAgentRunId ? "agent-result-arrived" : ""}`}>
+                          <AnimatePresence>
+                            {newAgentRunId && (
+                              <motion.div
+                                className="agent-result-notice"
+                                initial={reducedMotion ? false : { opacity: 0, y: -5 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0 }}
+                              >
+                                <ChartLine size={14} />
+                                <span>{t("newAgentResult")}</span>
+                                <strong>#{newAgentRunId}</strong>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                          {runs.length ? (
+                            <>
+                              <select value={selectedRun?.id || runs[0].id} onChange={(event) => void api.run(Number(event.target.value)).then(setSelectedRun)}>
+                                {runs.map((run) => <option value={run.id} key={run.id}>#{run.id} {run.kind} {run.note}</option>)}
+                              </select>
+                              {selectedRun && (
+                                <>
+                                  <div className="run-dock-title"><span>RUN #{selectedRun.id}</span><h2>{selectedRun.kind.replaceAll("_", " ")}</h2></div>
+                                  <RunPlot run={selectedRun} />
+                                  <div className="data-foot"><span>{selectedRun.row_count} {t("samples")}</span>{Object.entries(selectedRun.meta).slice(0, 5).map(([key, value]) => <span key={key}>{key}: {compactDetail(value)}</span>)}</div>
+                                </>
+                              )}
+                            </>
+                          ) : <p>{t("noRuns")}</p>}
+                        </div>
+                      )}
                       {tab === "activity" && <div className="activity-view">{activity.map((event) => <article key={event.id}><span>{eventLabel(language, event.type)}</span><p>{event.text}</p><time>{new Date(event.created_at).toLocaleTimeString(language)}</time></article>)}</div>}
                       {tab === "artifacts" && <div className="artifact-view">{artifacts.map((artifact) => <article key={artifact.id}><div><strong>{artifact.kind}</strong><span>{artifact.media_type}</span></div><button onClick={() => void api.openArtifact(artifact)}><DownloadSimple /></button></article>)}</div>}
                     </section>

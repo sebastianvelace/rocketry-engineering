@@ -499,6 +499,33 @@ regenerate them deliberately after an intentional layout change with
 `pnpm exec playwright test visual.e2e.ts --update-snapshots`, never to make
 a failure disappear without looking at the diff first.
 
+### Active-turn guidance and automatic result affinity
+
+Codex sessions no longer force the operator to choose between waiting and
+interrupting. While a turn is running, the composer changes to an
+active-turn guidance control. Submitting there calls Codex app-server's
+native `turn/steer` method with the current thread and turn identifiers.
+The guidance is also persisted as a normal user message with
+`data.steer=true`, so replay shows exactly when the operator redirected the
+work. Claude keeps its stop-only behavior because the Agent SDK does not
+offer an equivalent in-turn steering primitive.
+
+Simulation and capture tool completions now have result affinity. The client
+extracts the `run_id` returned by either provider's MCP payload, refreshes the
+engineering store, selects that exact run, changes the right dock to Runs and
+renders it immediately. A list-difference fallback covers tools that save a
+run but omit the identifier. This remains event-driven; no polling timer was
+added.
+
+Coverage includes:
+
+- adapter contract verification for `turn/steer`;
+- manager persistence and active-session state tests;
+- payload extraction for Claude and Codex MCP result shapes;
+- a browser E2E that guides a running Codex turn; and
+- a browser E2E that injects a completed Flight tool call and verifies the
+  resulting OpenRocket metrics appear automatically beside the conversation.
+
 ## Security constraints
 
 - The gateway binds to `127.0.0.1` only.

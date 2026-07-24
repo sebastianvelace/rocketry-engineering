@@ -69,6 +69,31 @@ export const events = [
   },
 ];
 
+type MockRun = {
+  id: number;
+  kind: string;
+  note: string;
+  created_at: string;
+  columns: string[];
+  rows: unknown[][];
+  meta: Record<string, unknown>;
+};
+
+export type MockGatewayController = {
+  session: Record<string, unknown>;
+  runs: MockRun[];
+  lastSteer: string;
+  emit: (event: Record<string, unknown>) => void;
+};
+
+const controllers = new WeakMap<Page, MockGatewayController>();
+
+export function mockGatewayController(page: Page): MockGatewayController {
+  const controller = controllers.get(page);
+  if (!controller) throw new Error("The mock gateway has not been installed for this page.");
+  return controller;
+}
+
 export async function mockGateway(
   page: Page,
   sessionEvents: typeof events = events,
@@ -82,7 +107,17 @@ export async function mockGateway(
   const createdSessions: Record<string, unknown>[] = [];
   const mergedSessionIds = new Set<string>();
   const deletedSessionIds = new Set<string>();
-  await page.routeWebSocket("ws://gateway.test/**", () => {});
+  let socket: { send: (message: string) => void } | null = null;
+  const controller: MockGatewayController = {
+    session: { ...baseSession },
+    runs: [],
+    lastSteer: "",
+    emit: (event) => socket?.send(JSON.stringify(event)),
+  };
+  controllers.set(page, controller);
+  await page.routeWebSocket("ws://gateway.test/**", (route) => {
+    socket = route;
+  });
   await page.route("http://gateway.test/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -101,7 +136,7 @@ export async function mockGateway(
           ok: true,
           sessions: [
             ...createdSessions.filter((session) => !deletedSessionIds.has(session.id as string)),
-            ...(sessionDeleted ? [] : [{ ...baseSession, metadata: { model: selectedModel } }]),
+            ...(sessionDeleted ? [] : [{ ...controller.session, metadata: { ...((controller.session.metadata as Record<string, unknown>) || {}), model: selectedModel } }]),
           ],
         };
       }
@@ -129,7 +164,27 @@ export async function mockGateway(
         openrocket_ready: true,
       };
     } else if (path === "/api/runs") {
-      payload = { ok: true, runs: [] };
+      payload = {
+        ok: true,
+        runs: controller.runs.map((run) => ({
+          id: run.id,
+          kind: run.kind,
+          note: run.note,
+          created_at: run.created_at,
+          row_count: run.rows.length,
+          columns: run.columns,
+          meta: run.meta,
+        })),
+      };
+    } else if (path.match(/^\/api\/runs\/\d+$/)) {
+      const id = Number(path.split("/").pop());
+      const run = controller.runs.find((item) => item.id === id);
+      if (run) {
+        payload = { ok: true, run: { ...run, row_count: run.rows.length } };
+      } else {
+        status = 404;
+        payload = { ok: false, error: { code: "not_found", message: "Run not found" } };
+      }
     } else if (path === "/api/artifacts") {
       payload = { ok: true, artifacts: [] };
     } else if (path === "/api/usage") {
@@ -177,7 +232,7 @@ export async function mockGateway(
       sessionDeleted = true;
       payload = { ok: true, deleted_session_id: "session-1" };
     } else if (path === "/api/sessions/session-1/connect") {
-      payload = { ok: true, session: { ...baseSession, metadata: { model: selectedModel } } };
+      payload = { ok: true, session: { ...controller.session, metadata: { model: selectedModel } } };
     } else if (path === "/api/sessions/session-1/events") {
       payload = { ok: true, events: sessionEvents };
     } else if (path === "/api/sessions/session-1/approvals") {
@@ -188,6 +243,9 @@ export async function mockGateway(
     } else if (path === "/api/sessions/session-1/model" && method === "POST") {
       selectedModel = String(request.postDataJSON().model);
       payload = { ok: true, session: { ...baseSession, metadata: { model: selectedModel } } };
+    } else if (path === "/api/sessions/session-1/steer" && method === "POST") {
+      controller.lastSteer = String(request.postDataJSON().text || "");
+      payload = { ok: true, event: { ...events[0], id: "steer", text: "Active turn guided" } };
     } else if (path.match(/^\/api\/sessions\/[^/]+\/worktree\/merge$/) && method === "POST") {
       const id = path.split("/")[3];
       mergedSessionIds.add(id);

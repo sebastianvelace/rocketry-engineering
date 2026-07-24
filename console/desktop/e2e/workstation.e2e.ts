@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { baseSession, events, mockGateway, now } from "./gateway-fixture";
+import { baseSession, events, mockGateway, mockGatewayController, now } from "./gateway-fixture";
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -27,6 +27,56 @@ test("agent workspace renders Markdown, repository scope and native model select
 
   await expect(page.locator(".composer")).toContainText("opus / 2 commands");
   await expect(composer).toHaveValue("");
+});
+
+test("Codex accepts guidance while its current turn keeps running", async ({ page }) => {
+  const gateway = mockGatewayController(page);
+  gateway.session = { ...baseSession, provider: "codex", status: "running" };
+  await page.goto("/");
+
+  const composer = page.locator("textarea");
+  await expect(composer).toHaveAttribute("placeholder", "Añade una indicación al turno activo de Codex...");
+  await composer.fill("Mantén el motor y reduce la masa a 220 g.");
+  await page.getByRole("button", { name: "Guiar turno" }).click();
+
+  await expect.poll(() => gateway.lastSteer).toBe("Mantén el motor y reduce la masa a 220 g.");
+  await expect(page.getByRole("button", { name: "Detener" })).toBeVisible();
+});
+
+test("a simulation completed by the agent opens and plots its new run automatically", async ({ page }) => {
+  await page.goto("/");
+  const gateway = mockGatewayController(page);
+  await expect(page.locator(".agent-state")).toContainText("Listo");
+
+  gateway.runs.unshift({
+    id: 91,
+    kind: "FLIGHT",
+    note: "Agent flight simulation",
+    created_at: now,
+    columns: ["metric", "value"],
+    rows: [
+      ["apogee", 1503.4],
+      ["mach", 0.826],
+      ["vmax", 280.7],
+      ["margin", 2.38],
+    ],
+    meta: { source: "OpenRocket", requested_by: "agent" },
+  });
+  gateway.emit({
+    sequence: 4,
+    id: "flight-tool-complete",
+    session_id: "session-1",
+    created_at: now,
+    type: "tool_completed",
+    role: null,
+    text: "mcp__rocketry__run_flight",
+    data: { tool_result: { content: JSON.stringify({ run_id: 91 }) } },
+    raw: {},
+  });
+
+  await expect(page.getByText("Nuevo resultado del agente")).toBeVisible();
+  await expect(page.locator(".run-dock-title")).toContainText("RUN #91");
+  await expect(page.locator(".metric-field")).toContainText("1,503.4");
 });
 
 const richActivityEvents = [

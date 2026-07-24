@@ -151,6 +151,13 @@ export class GatewayApi {
     });
   }
 
+  async steer(sessionId: string, text: string): Promise<void> {
+    await this.request(`/api/sessions/${sessionId}/steer`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  }
+
   async interrupt(sessionId: string): Promise<void> {
     await this.request(`/api/sessions/${sessionId}/interrupt`, {
       method: "POST",

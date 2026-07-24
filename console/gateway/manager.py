@@ -237,6 +237,40 @@ class SessionManager:
             await self._publish(submitted)
             return submitted
 
+    async def steer(self, session_id: str, text: str) -> EventRecord:
+        """Send additional guidance without interrupting an active Codex turn."""
+        prompt = text.strip()
+        if not prompt:
+            raise ValueError("Guidance cannot be empty.")
+        if len(prompt.encode("utf-8")) > 200_000:
+            raise ValueError("Guidance is too large.")
+        async with self._session_locks[session_id]:
+            session = self.store.get_session(session_id)
+            if session.provider != "codex":
+                raise ValueError("Active-turn guidance is only available for Codex.")
+            if session.status != "running":
+                raise RuntimeError("The session does not have an active turn.")
+            adapter = self.adapters.get(session_id)
+            if adapter is None or not hasattr(adapter, "steer"):
+                raise RuntimeError("The active Codex turn is no longer connected.")
+            event = self.store.append_event(
+                session_id,
+                type="user_message",
+                role="user",
+                text=prompt,
+                data={"steer": True},
+            )
+            await self._publish(event)
+            await adapter.steer(prompt)
+            submitted = self.store.append_event(
+                session_id,
+                type="session",
+                text="Active turn guided",
+                data={"turn_id": getattr(adapter, "turn_id", None)},
+            )
+            await self._publish(submitted)
+            return submitted
+
     async def connect(self, session_id: str) -> None:
         """Warm a provider without consuming a model turn."""
         async with self._session_locks[session_id]:

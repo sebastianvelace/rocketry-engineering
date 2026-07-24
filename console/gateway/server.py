@@ -306,6 +306,27 @@ def create_app(
         except Exception as exc:
             return error_response("provider_unavailable", str(exc), 503)
 
+    async def steer_turn(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        try:
+            payload = await request.json()
+            event = await session_manager.steer(
+                request.path_params["session_id"],
+                str(payload.get("text") or ""),
+            )
+            return JSONResponse({"ok": True, "event": gateway_store.serialize(event)}, status_code=202)
+        except KeyError as exc:
+            return error_response("not_found", str(exc), 404)
+        except ValueError as exc:
+            return error_response("invalid_request", str(exc), 400)
+        except RuntimeError as exc:
+            return error_response("session_busy", str(exc), 409)
+        except ProviderError as exc:
+            return error_response("provider_unavailable", str(exc), 503)
+        except Exception as exc:
+            return error_response("provider_unavailable", str(exc), 503)
+
     async def interrupt(request: Request):
         if not authorized(request):
             return error_response("unauthorized", "A valid gateway token is required.", 401)
@@ -691,6 +712,7 @@ def create_app(
         Route("/api/sessions/{session_id:str}/commands", execute_session_command, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/events", list_events, methods=["GET"]),
         Route("/api/sessions/{session_id:str}/messages", send_message, methods=["POST"]),
+        Route("/api/sessions/{session_id:str}/steer", steer_turn, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/interrupt", interrupt, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/approvals", pending_approvals, methods=["GET"]),
         Route("/api/sessions/{session_id:str}/worktree", worktree_review, methods=["GET"]),

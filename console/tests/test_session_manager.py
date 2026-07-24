@@ -41,13 +41,19 @@ class FakeAdapter:
         self.interrupted = False
         self.closed = False
         self.approvals = []
+        self.guidance = []
+        self.turn_id = None
 
     async def start(self):
         return self.provider_session_id
 
     async def send_turn(self, prompt):
         self.prompts.append(prompt)
+        self.turn_id = "turn-1"
         return "turn-1"
+
+    async def steer(self, prompt):
+        self.guidance.append(prompt)
 
     async def interrupt(self):
         self.interrupted = True
@@ -232,6 +238,33 @@ class SessionManagerTests(unittest.TestCase):
         session_id = asyncio.run(exercise())
         self.assertTrue(self.adapters[0].interrupted)
         self.assertEqual(self.store.get_session(session_id).status, "interrupted")
+
+    def test_codex_active_turn_accepts_guidance_without_starting_another_turn(self):
+        async def exercise():
+            session = await self.manager.create_session(
+                provider="codex",
+                workspace=str(self.root),
+            )
+            await self.manager.send_message(session.id, "Run the simulation")
+            guided = await self.manager.steer(
+                session.id,
+                "Use the lighter airframe and keep the same motor.",
+            )
+            return session.id, guided
+
+        session_id, guided = asyncio.run(exercise())
+        self.assertEqual(self.adapters[0].prompts, ["Run the simulation"])
+        self.assertEqual(
+            self.adapters[0].guidance,
+            ["Use the lighter airframe and keep the same motor."],
+        )
+        self.assertEqual(guided.text, "Active turn guided")
+        self.assertEqual(self.store.get_session(session_id).status, "running")
+        user_events = [
+            event for event in self.store.list_events(session_id)
+            if event.type == "user_message"
+        ]
+        self.assertTrue(user_events[-1].data["steer"])
 
     def test_delete_session_closes_live_adapter_and_removes_data(self):
         async def exercise():
