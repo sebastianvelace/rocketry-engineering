@@ -13,6 +13,7 @@ import {
   Robot,
   RocketLaunch,
   Stop,
+  Trash,
   WaveSine,
   ClockCounterClockwise,
   PlugsConnected,
@@ -121,6 +122,8 @@ export default function App() {
   const [tab, setTab] = useState<ResultTab>("runs");
   const [composer, setComposer] = useState("");
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
+  const [deletingSession, setDeletingSession] = useState(false);
   const [newProvider, setNewProvider] = useState<Provider>("codex");
   const [newTitle, setNewTitle] = useState("");
   const [socketConnected, setSocketConnected] = useState(false);
@@ -277,6 +280,29 @@ export default function App() {
       setNewTaskOpen(false);
       setNewTitle("");
     } finally { setBusy(false); }
+  }
+
+  async function deleteConversation() {
+    if (!api || !sessionToDelete || deletingSession) return;
+    const deletedId = sessionToDelete.id;
+    setDeletingSession(true);
+    setConnectionError("");
+    try {
+      await api.deleteSession(deletedId);
+      warmed.current.delete(deletedId);
+      const remaining = sessions.filter((session) => session.id !== deletedId);
+      setSessions(remaining);
+      if (selectedId === deletedId) {
+        setSelectedId(remaining[0]?.id || null);
+        setEvents([]);
+        setApprovals([]);
+      }
+      setSessionToDelete(null);
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDeletingSession(false);
+    }
   }
 
   async function sendMessage(event: FormEvent) {
@@ -476,10 +502,20 @@ export default function App() {
             <header><span>{t("sessions")}</span><button onClick={() => setNewTaskOpen(true)}><Plus size={16} /></button></header>
             <nav>
               {sessions.map((session) => (
-                <button className={selectedId === session.id ? "active" : ""} onClick={() => setSelectedId(session.id)} key={session.id}>
-                  {session.provider === "codex" ? <Code size={15} /> : <Robot size={15} />}
-                  <span><strong>{session.title}</strong><small>{session.provider} / {statusLabel(language, session.status)}</small></span>
-                </button>
+                <div className={`session-row ${selectedId === session.id ? "active" : ""}`} key={session.id}>
+                  <button className="session-select" onClick={() => setSelectedId(session.id)}>
+                    {session.provider === "codex" ? <Code size={15} /> : <Robot size={15} />}
+                    <span><strong>{session.title}</strong><small>{session.provider} / {statusLabel(language, session.status)}</small></span>
+                  </button>
+                  <button
+                    className="session-delete"
+                    aria-label={`${t("deleteConversation")}: ${session.title}`}
+                    title={t("deleteConversation")}
+                    onClick={() => setSessionToDelete(session)}
+                  >
+                    <Trash size={14} />
+                  </button>
+                </div>
               ))}
               {!sessions.length && <p>{t("noSessions")}</p>}
             </nav>
@@ -567,6 +603,40 @@ export default function App() {
       </div>
 
       <AnimatePresence>{newTaskOpen && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) setNewTaskOpen(false); }}><motion.form className="new-task-dialog" initial={reducedMotion ? false : { opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} onSubmit={createTask}><header><div><span>NEW SESSION</span><h2>{t("chooseProvider")}</h2></div><button type="button" onClick={() => setNewTaskOpen(false)}><X /></button></header><div className="provider-choice">{(["codex", "claude"] as Provider[]).map((provider) => <button type="button" className={newProvider === provider ? "active" : ""} onClick={() => setNewProvider(provider)} key={provider}>{provider === "codex" ? <Code /> : <Robot />}<strong>{provider === "codex" ? "Codex" : "Claude Code"}</strong><span>{provider === "codex" ? t("codexDescription") : t("claudeDescription")}</span></button>)}</div><label>{t("taskTitle")}<input autoFocus value={newTitle} onChange={(event) => setNewTitle(event.target.value)} /></label><footer><button type="button" onClick={() => setNewTaskOpen(false)}>{t("cancel")}</button><button className="primary" disabled={busy}>{busy ? <CircleNotch className="spin" /> : <Plus />}{t("create")}</button></footer></motion.form></motion.div>}</AnimatePresence>
+      <AnimatePresence>
+        {sessionToDelete && (
+          <motion.div
+            className="modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !deletingSession) setSessionToDelete(null);
+            }}
+          >
+            <motion.section
+              className="delete-session-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-session-title"
+              initial={reducedMotion ? false : { opacity: 0, y: 12, scale: 0.99 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+            >
+              <span>DELETE SESSION</span>
+              <h2 id="delete-session-title">{t("deleteConversationTitle")}</h2>
+              <strong>{sessionToDelete.title}</strong>
+              <p>{t("deleteConversationBody")}</p>
+              <footer>
+                <button disabled={deletingSession} onClick={() => setSessionToDelete(null)}>{t("cancel")}</button>
+                <button className="danger" disabled={deletingSession} onClick={() => void deleteConversation()}>
+                  {deletingSession ? <CircleNotch className="spin" /> : <Trash />}
+                  {t("delete")}
+                </button>
+              </footer>
+            </motion.section>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </MotionConfig>
   );
 }

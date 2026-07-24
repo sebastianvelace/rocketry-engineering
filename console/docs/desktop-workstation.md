@@ -95,6 +95,10 @@ keeps SQLite bounded.
 
 On restart, active turns become interrupted and orphaned approvals become
 cancelled. A new message reconnects the matching provider session.
+Conversations can be deleted from the session rail after an explicit
+confirmation. Deleting a live conversation first closes its provider process,
+then atomically removes the session; SQLite foreign-key cascades remove its
+events and approvals.
 
 The UI replays durable events, then subscribes by WebSocket from the last
 sequence number. Subscriber queues are bounded. If a client is slow, SQLite

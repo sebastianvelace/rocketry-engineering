@@ -72,6 +72,7 @@ const events = [
 async function mockGateway(page: Page) {
   let selectedModel = "default";
   let sessionLoads = 0;
+  let sessionDeleted = false;
   await page.routeWebSocket("ws://gateway.test/**", () => {});
   await page.route("http://gateway.test/**", async (route) => {
     const request = route.request();
@@ -87,7 +88,12 @@ async function mockGateway(page: Page) {
         status = 503;
         payload = { ok: false, error: { message: "Gateway is still starting" } };
       } else {
-        payload = { ok: true, sessions: [{ ...baseSession, metadata: { model: selectedModel } }] };
+        payload = {
+          ok: true,
+          sessions: sessionDeleted
+            ? []
+            : [{ ...baseSession, metadata: { model: selectedModel } }],
+        };
       }
     } else if (path === "/api/status") {
       payload = {
@@ -142,6 +148,9 @@ async function mockGateway(page: Page) {
           codex: { total_tokens: 59144 },
         },
       };
+    } else if (path === "/api/sessions/session-1" && method === "DELETE") {
+      sessionDeleted = true;
+      payload = { ok: true, deleted_session_id: "session-1" };
     } else if (path === "/api/sessions/session-1/connect") {
       payload = { ok: true, session: { ...baseSession, metadata: { model: selectedModel } } };
     } else if (path === "/api/sessions/session-1/events") {
@@ -195,6 +204,18 @@ test("agent workspace renders Markdown, repository scope and native model select
 
   await expect(page.locator(".composer")).toContainText("opus / 2 commands");
   await expect(composer).toHaveValue("");
+});
+
+test("conversation deletion requires confirmation and clears the selected session", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Borrar conversación: Acceptance session" }).click();
+  const dialog = page.getByRole("dialog", { name: "¿Borrar esta conversación?" });
+  await expect(dialog).toContainText("Acceptance session");
+  await dialog.getByRole("button", { name: "Borrar" }).click();
+
+  await expect(page.getByText("Aún no hay sesiones")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Selecciona o crea una sesión" })).toBeVisible();
 });
 
 test("navigation rail resizes and engineering selects keep the dark instrument theme", async ({ page }) => {

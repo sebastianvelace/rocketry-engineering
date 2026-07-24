@@ -63,6 +63,12 @@ export class GatewayApi {
     return payload.session;
   }
 
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.request(`/api/sessions/${sessionId}`, {
+      method: "DELETE",
+    });
+  }
+
   async connectSession(sessionId: string): Promise<Session> {
     return (
       await this.request<{ session: Session }>(

@@ -144,8 +144,9 @@ turns verified the installed Claude Code and Codex subscription transports.
 4. **Frontend boundaries:** `App.tsx` still owns transport lifecycle, session
    state, composer behavior and layout. Extract session transport and
    conversation hooks before adding more provider-specific controls.
-5. **Session management:** add rename, archive/delete and a clear indication
-   when a provider session is already active in another workstation process.
+5. **Session management:** deletion with provider shutdown and cascading data
+   cleanup is implemented. Archive and a clear indication when a provider
+   session is already active in another workstation process remain pending.
 6. **Release portability:** package the Python gateway as a Tauri sidecar and
    add a migration/backup command for `.rocketry/gateway.db`.
 7. **Remote continuity:** conversation access from another computer still

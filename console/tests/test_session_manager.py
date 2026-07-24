@@ -154,6 +154,35 @@ class SessionManagerTests(unittest.TestCase):
         self.assertTrue(self.adapters[0].interrupted)
         self.assertEqual(self.store.get_session(session_id).status, "interrupted")
 
+    def test_delete_session_closes_live_adapter_and_removes_data(self):
+        async def exercise():
+            session = await self.manager.create_session(
+                provider="claude",
+                workspace=str(self.root),
+            )
+            await self.manager.connect(session.id)
+            await self.manager._handle_provider_approval(
+                session.id,
+                ProviderApproval(
+                    request_id="approval-1",
+                    action="Bash",
+                    details={"command": "pytest"},
+                ),
+            )
+            queue = self.manager.subscribe(session.id)
+            approval_id = self.store.list_pending_approvals(session.id)[0].id
+            await self.manager.delete_session(session.id)
+            return session.id, approval_id, queue
+
+        session_id, approval_id, queue = asyncio.run(exercise())
+
+        self.assertTrue(self.adapters[0].closed)
+        self.assertNotIn(session_id, self.manager.adapters)
+        self.assertNotIn(session_id, self.manager._subscribers)
+        self.assertNotIn(approval_id, self.manager._provider_approvals)
+        with self.assertRaises(KeyError):
+            self.store.get_session(session_id)
+
     def test_workspace_must_be_inside_allowed_root(self):
         async def exercise():
             await self.manager.create_session(

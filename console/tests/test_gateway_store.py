@@ -114,6 +114,23 @@ class GatewayStoreTests(unittest.TestCase):
 
         self.assertEqual(self.store.get_approval(approval.id).status, "cancelled")
 
+    def test_delete_session_cascades_to_events_and_approvals(self):
+        session = self.store.create_session(provider="claude", workspace="/workspace")
+        self.store.append_event(session.id, type="user_message", text="Remove me")
+        approval = self.store.create_approval(session.id, action="Bash")
+
+        self.store.delete_session(session.id)
+
+        with self.assertRaises(KeyError):
+            self.store.get_session(session.id)
+        with self.assertRaises(KeyError):
+            self.store.get_approval(approval.id)
+        self.assertEqual(self.store.list_events(session.id), [])
+
+    def test_delete_unknown_session_is_rejected(self):
+        with self.assertRaises(KeyError):
+            self.store.delete_session("missing")
+
     def test_payload_limits_reject_unbounded_events(self):
         session = self.store.create_session(provider="codex", workspace="/workspace")
         with self.assertRaisesRegex(ValueError, "too large"):

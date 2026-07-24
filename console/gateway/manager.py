@@ -178,6 +178,26 @@ class SessionManager:
                 return
             await self._ensure_adapter(session_id)
 
+    async def delete_session(self, session_id: str) -> None:
+        """Stop a live provider and remove all durable conversation data."""
+        async with self._session_locks[session_id]:
+            self.store.get_session(session_id)
+            adapter = self.adapters.pop(session_id, None)
+            if adapter is not None:
+                try:
+                    await adapter.close()
+                except Exception:
+                    # Deletion is authoritative even if an already-failing
+                    # provider process cannot complete its shutdown handshake.
+                    pass
+
+            pending = self.store.list_pending_approvals(session_id)
+            for approval in pending:
+                self._provider_approvals.pop(approval.id, None)
+
+            self.store.delete_session(session_id)
+            self._subscribers.pop(session_id, None)
+
     async def set_model(self, session_id: str, model: str) -> SessionRecord:
         async with self._session_locks[session_id]:
             session = self.store.get_session(session_id)

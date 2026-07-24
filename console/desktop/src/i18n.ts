@@ -40,6 +40,10 @@ const copy = {
     download: "Open artifact",
     provider: "Provider",
     close: "Close",
+    deleteConversation: "Delete conversation",
+    deleteConversationTitle: "Delete this conversation?",
+    deleteConversationBody: "Its messages, activity and pending approvals will be permanently removed. An active agent will be stopped.",
+    delete: "Delete",
   },
   es: {
     sessions: "Sesiones",
@@ -80,6 +84,10 @@ const copy = {
     download: "Abrir artefacto",
     provider: "Proveedor",
     close: "Cerrar",
+    deleteConversation: "Borrar conversación",
+    deleteConversationTitle: "¿Borrar esta conversación?",
+    deleteConversationBody: "Sus mensajes, actividad y autorizaciones pendientes se eliminarán definitivamente. Si el agente está activo, se detendrá.",
+    delete: "Borrar",
   },
 } as const;
 

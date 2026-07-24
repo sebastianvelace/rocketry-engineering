@@ -194,6 +194,17 @@ class GatewayStore:
             ).fetchall()
         return [self._session(row) for row in rows]
 
+    def delete_session(self, session_id: str) -> None:
+        """Delete a session and its dependent events and approvals."""
+        self.get_session(session_id)
+        with self._write_lock, self._connection() as connection:
+            cursor = connection.execute(
+                "DELETE FROM agent_sessions WHERE id = ?",
+                (session_id,),
+            )
+        if cursor.rowcount != 1:
+            raise KeyError(f"Session {session_id} does not exist.")
+
     def update_session(
         self,
         session_id: str,

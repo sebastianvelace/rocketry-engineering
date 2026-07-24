@@ -72,6 +72,8 @@ The desktop client provides:
 - a provider selector for independent Codex and Claude sessions;
 - native Bench, Wiring, Motor, Flight and History work surfaces;
 - durable conversation and activity history in `.rocketry/gateway.db`;
+- explicit conversation deletion with confirmation, provider shutdown and
+  cascading cleanup of its events and approvals;
 - WebSocket streaming without periodic page polling;
 - inline permission approval and interruption;
 - the same saved runs whether an operation starts manually or through an agent;

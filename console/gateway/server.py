@@ -138,6 +138,20 @@ def create_app(
         except KeyError as exc:
             return error_response("not_found", str(exc), 404)
 
+    async def delete_session(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        session_id = request.path_params["session_id"]
+        try:
+            await session_manager.delete_session(session_id)
+            return JSONResponse(
+                {"ok": True, "deleted_session_id": session_id},
+            )
+        except KeyError as exc:
+            return error_response("not_found", str(exc), 404)
+        except Exception as exc:
+            return error_response("provider_error", str(exc), 503)
+
     async def connect_session(request: Request):
         if not authorized(request):
             return error_response("unauthorized", "A valid gateway token is required.", 401)
@@ -616,6 +630,7 @@ def create_app(
         Route("/api/sessions", list_sessions, methods=["GET"]),
         Route("/api/sessions", create_session, methods=["POST"]),
         Route("/api/sessions/{session_id:str}", get_session, methods=["GET"]),
+        Route("/api/sessions/{session_id:str}", delete_session, methods=["DELETE"]),
         Route("/api/sessions/{session_id:str}/connect", connect_session, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/model", set_session_model, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/commands", execute_session_command, methods=["POST"]),

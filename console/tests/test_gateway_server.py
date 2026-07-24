@@ -174,6 +174,32 @@ class GatewayServerTests(unittest.TestCase):
         self.assertEqual(connected.json()["session"]["status"], "ready")
         self.assertEqual(self.adapters[0].prompts, [])
 
+    def test_delete_session_removes_it_and_returns_not_found_afterward(self):
+        async def exercise():
+            session = await self.create_session()
+            await self.request(
+                "POST",
+                f"/api/sessions/{session['id']}/connect",
+                headers=self.headers,
+            )
+            deleted = await self.request(
+                "DELETE",
+                f"/api/sessions/{session['id']}",
+                headers=self.headers,
+            )
+            missing = await self.request(
+                "GET",
+                f"/api/sessions/{session['id']}",
+                headers=self.headers,
+            )
+            return session, deleted, missing
+
+        session, deleted, missing = asyncio.run(exercise())
+
+        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.json()["deleted_session_id"], session["id"])
+        self.assertEqual(missing.status_code, 404)
+
     def test_claude_model_change_is_persisted_without_a_turn(self):
         async def exercise():
             session = await self.create_session(provider="claude")
