@@ -193,6 +193,25 @@ async function mockGateway(
       payload = { ok: true, events: [] };
     } else if (path.match(/^\/api\/sessions\/[^/]+\/approvals$/)) {
       payload = { ok: true, approvals: [] };
+    } else if (path === "/api/bench/capture" && method === "POST") {
+      status = 422;
+      payload = {
+        ok: false,
+        error: {
+          code: "capture_timeout",
+          message: "No complete block was received before the timeout.",
+          details: {
+            diagnostics: {
+              bytes_received: 96,
+              lines_received: 4,
+              last_line: "# BLOCK STEP R=220",
+              saw_block_start: true,
+              rows_captured: 0,
+              elapsed_s: 15.03,
+            },
+          },
+        },
+      };
     } else if (path === "/api/flight/config") {
       payload = {
         ok: true,
@@ -389,6 +408,19 @@ test("an isolated workspace toggle creates a session on its own worktree branch"
   await expect(page.getByRole("heading", { name: "Isolated fix" })).toBeVisible();
   await expect(page.locator(".workspace-scope")).toContainText("worktree aislado");
   await expect(page.locator(".workspace-scope")).toContainText("workstation/session-2");
+});
+
+test("a Bench capture timeout shows what was actually received on the wire", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Banco" }).click();
+  await page.getByRole("button", { name: "Capturar bloque" }).click();
+
+  const diagnostics = page.locator(".bench-diagnostics");
+  await expect(diagnostics).toBeVisible();
+  await expect(diagnostics).toContainText("96");
+  await expect(diagnostics).toContainText("# BLOCK STEP R=220");
 });
 
 test("conversation deletion requires confirmation and clears the selected session", async ({ page }) => {

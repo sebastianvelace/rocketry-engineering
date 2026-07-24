@@ -52,7 +52,10 @@ async def execute(
         result = await anyio.to_thread.run_sync(operation)
     except services.ServiceError as exc:
         await ctx.warning(f"{exc.code}: {exc.message}")
-        return {"ok": False, "error": {"code": exc.code, "message": exc.message}}
+        error: dict[str, Any] = {"code": exc.code, "message": exc.message}
+        if exc.details:
+            error["details"] = exc.details
+        return {"ok": False, "error": error}
     except Exception as exc:  # MCP must not leak a server traceback to either provider.
         await ctx.error(f"internal_error: {type(exc).__name__}: {exc}")
         return {

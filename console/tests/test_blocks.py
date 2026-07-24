@@ -36,15 +36,28 @@ class BlockProtocolTests(unittest.TestCase):
                 b"# END\n",
             ]
         )
-        block = blocks.read_one_block(serial, timeout_s=0.05)
+        block, diagnostics = blocks.read_one_block(serial, timeout_s=0.05)
         self.assertIsNotNone(block)
         self.assertEqual(block.kind, "STEP")
         self.assertEqual(block.columns, ["t_us", "adc"])
         self.assertEqual(block.rows, [[0.0, 10.0], [200.0, 30.0]])
+        self.assertTrue(diagnostics.saw_block_start)
+        self.assertEqual(diagnostics.rows_captured, 2)
 
     def test_reader_returns_none_for_incomplete_block(self):
         serial = FakeSerial([b"# BLOCK SINE\n", b"0,1\n"])
-        self.assertIsNone(blocks.read_one_block(serial, timeout_s=0.001))
+        block, diagnostics = blocks.read_one_block(serial, timeout_s=0.001)
+        self.assertIsNone(block)
+        self.assertTrue(diagnostics.saw_block_start)
+        self.assertEqual(diagnostics.last_line, "0,1")
+
+    def test_reader_diagnostics_report_silence_before_any_block(self):
+        serial = FakeSerial([b"booting\n", b"noise\n"])
+        block, diagnostics = blocks.read_one_block(serial, timeout_s=0.001)
+        self.assertIsNone(block)
+        self.assertFalse(diagnostics.saw_block_start)
+        self.assertEqual(diagnostics.last_line, "noise")
+        self.assertGreater(diagnostics.bytes_received, 0)
 
     def test_port_discovery_excludes_motherboard_uart(self):
         ports = [

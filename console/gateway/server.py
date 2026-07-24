@@ -44,11 +44,13 @@ class GatewayConfig:
     port: int = 8765
 
 
-def error_response(code: str, message: str, status: int) -> JSONResponse:
-    return JSONResponse(
-        {"ok": False, "error": {"code": code, "message": message}},
-        status_code=status,
-    )
+def error_response(
+    code: str, message: str, status: int, *, details: dict[str, object] | None = None
+) -> JSONResponse:
+    error: dict[str, object] = {"code": code, "message": message}
+    if details:
+        error["details"] = details
+    return JSONResponse({"ok": False, "error": error}, status_code=status)
 
 
 def bearer_token(request: Request) -> str:
@@ -377,7 +379,7 @@ def create_app(
             )
             return JSONResponse({"ok": True, "result": result}, status_code=201)
         except services.ServiceError as exc:
-            return error_response(exc.code, exc.message, 422)
+            return error_response(exc.code, exc.message, 422, details=exc.details)
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             return error_response("invalid_request", str(exc), 400)
 

@@ -8,6 +8,7 @@ stable progress, cancellation, and error contracts.
 from __future__ import annotations
 
 import csv
+import dataclasses
 import io
 import threading
 from dataclasses import dataclass, field
@@ -24,10 +25,18 @@ from adapters import openmotor, openrocket
 class ServiceError(RuntimeError):
     """A user-facing failure with a stable machine-readable code."""
 
-    def __init__(self, code: str, message: str, *, cause: Exception | None = None):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        cause: Exception | None = None,
+        details: dict[str, Any] | None = None,
+    ):
         super().__init__(message)
         self.code = code
         self.message = message
+        self.details = details or {}
         self.__cause__ = cause
 
 
@@ -116,7 +125,7 @@ class BenchService:
         self,
         *,
         ports_fn: Callable[[], list[str]] | None = None,
-        capture_fn: Callable[..., blocks.Block | None] | None = None,
+        capture_fn: Callable[..., tuple[blocks.Block | None, blocks.BlockReadDiagnostics]] | None = None,
         detect_fn: Callable[[blocks.Block], str] | None = None,
         save_fn: Callable[..., int] | None = None,
     ):
@@ -147,7 +156,7 @@ class BenchService:
             raise ServiceError("invalid_request", "Baud rate and timeout must be positive.")
         ctx.emit("connecting", f"Opening {request.port}.")
         try:
-            block = self._capture(
+            block, diagnostics = self._capture(
                 request.port,
                 baud=request.baud,
                 timeout_s=request.timeout_s,
@@ -163,6 +172,7 @@ class BenchService:
             raise ServiceError(
                 "capture_timeout",
                 "No complete block was received before the timeout.",
+                details={"diagnostics": dataclasses.asdict(diagnostics)},
             )
         kind = self._detect(block)
         ctx.emit("complete", f"Captured {len(block.rows)} rows as {kind}.", completed=1, total=1)

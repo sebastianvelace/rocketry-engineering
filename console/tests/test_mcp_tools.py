@@ -69,7 +69,7 @@ class RocketryToolTests(unittest.TestCase):
         )
         saved = []
         bench = services.BenchService(
-            capture_fn=lambda port, baud, timeout_s: captured,
+            capture_fn=lambda port, baud, timeout_s: (captured, blocks.BlockReadDiagnostics()),
             detect_fn=lambda block: block.kind,
             save_fn=lambda kind, meta, columns, rows, note="": saved.append(note) or 9,
         )

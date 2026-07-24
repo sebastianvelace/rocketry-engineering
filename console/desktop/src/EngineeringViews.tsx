@@ -9,7 +9,7 @@ import {
 } from "@phosphor-icons/react";
 import { motion } from "motion/react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { GatewayApi } from "./api";
+import { GatewayApiError, type GatewayApi } from "./api";
 import type { Language } from "./i18n";
 import { RunPlot } from "./RunPlot";
 import type {
@@ -80,6 +80,30 @@ function ErrorLine({ error }: { error: string }) {
   return error ? <div className="error-line"><Warning size={16} />{error}</div> : null;
 }
 
+interface BenchDiagnostics {
+  bytes_received: number;
+  lines_received: number;
+  last_line: string;
+  saw_block_start: boolean;
+  rows_captured: number;
+  elapsed_s: number;
+}
+
+function BenchDiagnosticsPanel({ diagnostics, language }: { diagnostics: BenchDiagnostics; language: Language }) {
+  return (
+    <div className="bench-diagnostics">
+      <span>{text(language, "Qué se recibió realmente", "What was actually received")}</span>
+      <dl>
+        <div><dt>{text(language, "Bytes recibidos", "Bytes received")}</dt><dd>{diagnostics.bytes_received}</dd></div>
+        <div><dt>{text(language, "Líneas recibidas", "Lines received")}</dt><dd>{diagnostics.lines_received}</dd></div>
+        <div><dt>{text(language, "Bloque iniciado", "Block started")}</dt><dd>{diagnostics.saw_block_start ? text(language, "sí", "yes") : text(language, "no — nunca llegó '# BLOCK'", "no — '# BLOCK' never arrived")}</dd></div>
+        <div><dt>{text(language, "Filas capturadas", "Rows captured")}</dt><dd>{diagnostics.rows_captured}</dd></div>
+        <div><dt>{text(language, "Última línea vista", "Last line seen")}</dt><dd>{diagnostics.last_line || text(language, "(ninguna)", "(none)")}</dd></div>
+      </dl>
+    </div>
+  );
+}
+
 function RunOutput({ run }: { run: RunRecord | null }) {
   if (!run) return null;
   return (
@@ -108,6 +132,7 @@ export function BenchView({ api, language, status, onRunSaved }: BaseProps) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [diagnostics, setDiagnostics] = useState<BenchDiagnostics | null>(null);
   const [run, setRun] = useState<RunRecord | null>(null);
 
   useEffect(() => {
@@ -125,6 +150,7 @@ export function BenchView({ api, language, status, onRunSaved }: BaseProps) {
     event.preventDefault();
     setBusy(true);
     setError("");
+    setDiagnostics(null);
     try {
       const result = await api.captureBench({
         port,
@@ -135,6 +161,10 @@ export function BenchView({ api, language, status, onRunSaved }: BaseProps) {
       setRun(await onRunSaved(result.run_id));
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
+      if (nextError instanceof GatewayApiError && nextError.code === "capture_timeout") {
+        const reported = nextError.details.diagnostics as BenchDiagnostics | undefined;
+        if (reported) setDiagnostics(reported);
+      }
     } finally {
       setBusy(false);
     }
@@ -181,6 +211,7 @@ export function BenchView({ api, language, status, onRunSaved }: BaseProps) {
         <OperationButton busy={busy} disabled={!port}>{text(language, "Capturar bloque", "Capture block")}</OperationButton>
       </form>
       <ErrorLine error={error} />
+      {diagnostics && <BenchDiagnosticsPanel diagnostics={diagnostics} language={language} />}
       {!run && !busy && (
         <div className="waiting-line">
           <span># BLOCK</span>

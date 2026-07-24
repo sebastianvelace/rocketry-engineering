@@ -17,6 +17,16 @@ import type {
   OperationResult,
 } from "./types";
 
+export class GatewayApiError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly details: Record<string, unknown> = {},
+  ) {
+    super(message);
+  }
+}
+
 export async function connectGateway(): Promise<GatewayConnection> {
   if (isTauri()) {
     return invoke<GatewayConnection>("start_gateway");
@@ -42,7 +52,11 @@ export class GatewayApi {
     });
     const payload = await response.json();
     if (!response.ok || payload.ok === false) {
-      throw new Error(payload.error?.message || `Gateway request failed (${response.status})`);
+      throw new GatewayApiError(
+        payload.error?.message || `Gateway request failed (${response.status})`,
+        payload.error?.code || "unknown_error",
+        payload.error?.details || {},
+      );
     }
     return payload as T;
   }

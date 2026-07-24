@@ -589,6 +589,13 @@ button.live-badge:hover { color: var(--text); border-color: #3a4756; }
 .waiting-line span { color: #4f5c6d; font-family: "Geist Mono Variable", monospace; font-size: 9px; }
 .waiting-line p { max-width: 460px; font-size: 12px; }
 .error-line { display: flex; gap: 9px; margin-top: 20px; padding: 12px 0; align-items: center; border-top: 1px solid #5e242b; border-bottom: 1px solid #5e242b; color: #ff9fa3; font-size: 12px; }
+
+.bench-diagnostics { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.bench-diagnostics > span { color: var(--muted); font-family: "Geist Mono Variable", monospace; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
+.bench-diagnostics dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 10px 0 0; }
+.bench-diagnostics dl > div { display: flex; flex-direction: column; gap: 2px; }
+.bench-diagnostics dt { color: var(--quiet); font-size: 10px; }
+.bench-diagnostics dd { margin: 0; color: var(--text); font-family: "Geist Mono Variable", monospace; font-size: 12px; overflow-wrap: anywhere; }
 .operation-output { margin-top: 42px; }
 .operation-output > header { display: flex; margin-bottom: 20px; align-items: end; justify-content: space-between; }
 .operation-output time { color: var(--quiet); font-family: "Geist Mono Variable", monospace; font-size: 9px; }

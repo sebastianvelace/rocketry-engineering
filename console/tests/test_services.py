@@ -21,7 +21,7 @@ class ServiceContractTests(unittest.TestCase):
         events = []
         service = services.BenchService(
             ports_fn=lambda: ["/dev/ttyUSB0"],
-            capture_fn=lambda port, baud, timeout_s: block,
+            capture_fn=lambda port, baud, timeout_s: (block, blocks.BlockReadDiagnostics()),
             detect_fn=lambda captured: captured.kind,
         )
 
@@ -36,12 +36,32 @@ class ServiceContractTests(unittest.TestCase):
 
     def test_bench_timeout_has_stable_error_code(self):
         service = services.BenchService(
-            capture_fn=lambda port, baud, timeout_s: None,
+            capture_fn=lambda port, baud, timeout_s: (None, blocks.BlockReadDiagnostics()),
             detect_fn=lambda captured: captured.kind,
         )
         with self.assertRaises(services.ServiceError) as raised:
             service.capture(services.BenchCaptureRequest("/dev/ttyUSB0"))
         self.assertEqual(raised.exception.code, "capture_timeout")
+
+    def test_bench_timeout_reports_what_was_actually_seen_on_the_wire(self):
+        diagnostics = blocks.BlockReadDiagnostics(
+            bytes_received=48,
+            lines_received=3,
+            last_line="# BLOCK STEP",
+            saw_block_start=True,
+            rows_captured=0,
+            elapsed_s=15.02,
+        )
+        service = services.BenchService(
+            capture_fn=lambda port, baud, timeout_s: (None, diagnostics),
+            detect_fn=lambda captured: captured.kind,
+        )
+        with self.assertRaises(services.ServiceError) as raised:
+            service.capture(services.BenchCaptureRequest("/dev/ttyUSB0"))
+        reported = raised.exception.details["diagnostics"]
+        self.assertEqual(reported["bytes_received"], 48)
+        self.assertEqual(reported["last_line"], "# BLOCK STEP")
+        self.assertTrue(reported["saw_block_start"])
 
     def test_cancelled_operation_never_reaches_provider(self):
         called = False

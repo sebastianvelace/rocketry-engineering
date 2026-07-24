@@ -33,6 +33,19 @@ _TOKEN_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _KV_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=([^\s]+)")
 
 
+@dataclass(frozen=True)
+class BlockReadDiagnostics:
+    """What the reader actually saw, so a timeout is debuggable instead of
+    a bare failure. Populated whether or not a complete block arrived."""
+
+    bytes_received: int = 0
+    lines_received: int = 0
+    last_line: str = ""
+    saw_block_start: bool = False
+    rows_captured: int = 0
+    elapsed_s: float = 0.0
+
+
 @dataclass
 class Block:
     """One captured '# BLOCK ... # END' section."""
@@ -113,22 +126,34 @@ def _looks_like_header(line: str) -> bool:
         return True
 
 
-def read_one_block(ser: serial.Serial, timeout_s: float = 15.0) -> Block | None:
+def read_one_block(
+    ser: serial.Serial, timeout_s: float = 15.0
+) -> tuple[Block | None, BlockReadDiagnostics]:
     """Read a single '# BLOCK ... # END' section from an open serial port.
 
-    Returns None if no complete block arrives within timeout_s.
+    Returns (None, diagnostics) if no complete block arrives within
+    timeout_s; the diagnostics report what was actually seen on the wire
+    (bytes, line count, last line, whether a block ever started) so a
+    timeout is debuggable instead of a bare failure.
     """
-    deadline = time.time() + timeout_s
+    start = time.time()
+    deadline = start + timeout_s
     kind, meta, columns, rows = "", {}, [], []
     capturing = False
+    bytes_received = 0
+    lines_received = 0
+    last_line = ""
 
     while time.time() < deadline:
         raw = ser.readline()
         if not raw:
             continue
+        bytes_received += len(raw)
         line = raw.decode(errors="ignore").strip()
         if not line:
             continue
+        lines_received += 1
+        last_line = line
 
         if line.startswith("# BLOCK"):
             kind, meta = _parse_meta_line(line)
@@ -137,7 +162,14 @@ def read_one_block(ser: serial.Serial, timeout_s: float = 15.0) -> Block | None:
             continue
 
         if line == "# END" and capturing:
-            return Block(kind=kind, meta=meta, columns=columns, rows=rows)
+            return Block(kind=kind, meta=meta, columns=columns, rows=rows), BlockReadDiagnostics(
+                bytes_received=bytes_received,
+                lines_received=lines_received,
+                last_line=last_line,
+                saw_block_start=True,
+                rows_captured=len(rows),
+                elapsed_s=time.time() - start,
+            )
 
         if not capturing:
             continue
@@ -160,10 +192,19 @@ def read_one_block(ser: serial.Serial, timeout_s: float = 15.0) -> Block | None:
             continue
         rows.append(row)
 
-    return None
+    return None, BlockReadDiagnostics(
+        bytes_received=bytes_received,
+        lines_received=lines_received,
+        last_line=last_line,
+        saw_block_start=capturing,
+        rows_captured=len(rows),
+        elapsed_s=time.time() - start,
+    )
 
 
-def open_and_read(port: str, baud: int = DEFAULT_BAUD, timeout_s: float = 15.0) -> Block | None:
+def open_and_read(
+    port: str, baud: int = DEFAULT_BAUD, timeout_s: float = 15.0
+) -> tuple[Block | None, BlockReadDiagnostics]:
     """Convenience: open a port, read one block, close it."""
     with serial.Serial(port, baud, timeout=timeout_s) as ser:
         return read_one_block(ser, timeout_s=timeout_s)

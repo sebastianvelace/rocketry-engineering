@@ -6,7 +6,7 @@ from pathlib import Path
 import httpx
 
 from gateway.manager import SessionManager
-from gateway.server import GatewayConfig, create_app, websocket_credentials
+from gateway.server import GatewayConfig, create_app, error_response, websocket_credentials
 from gateway.store import GatewayStore
 
 
@@ -277,6 +277,23 @@ class GatewayServerTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"]["code"], "invalid_request")
+
+
+class ErrorResponseTests(unittest.TestCase):
+    def test_details_are_included_only_when_present(self):
+        import json as json_module
+
+        bare = error_response("capture_timeout", "No block received.", 422)
+        self.assertNotIn("details", json_module.loads(bare.body)["error"])
+
+        with_diagnostics = error_response(
+            "capture_timeout",
+            "No block received.",
+            422,
+            details={"diagnostics": {"bytes_received": 0, "saw_block_start": False}},
+        )
+        decoded = json_module.loads(with_diagnostics.body)["error"]
+        self.assertEqual(decoded["details"]["diagnostics"]["bytes_received"], 0)
 
 
 if __name__ == "__main__":

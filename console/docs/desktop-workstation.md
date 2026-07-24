@@ -249,6 +249,32 @@ still a guess — none of Codex's app-server protocol is vendored locally to
 confirm it, so this needs the same live check as `AskUserQuestion` above,
 against a real Codex file-edit turn.
 
+### Bench handshake/diagnostic view
+
+Unrelated to the agent work above: a Bench capture timeout used to report
+nothing beyond "no complete block was received." `core/blocks.py`'s
+`read_one_block` (and `open_and_read`) now always return a
+`BlockReadDiagnostics` record alongside the `Block | None` result — bytes
+received, line count, the last non-empty line seen, whether a `# BLOCK`
+marker ever arrived, and rows captured so far — whether or not the read
+timed out. `ServiceError` gained an optional `details` field to carry it;
+`gateway/server.py`'s `error_response` and `rocketry_mcp.py`'s error
+formatting both forward it, so both the desktop client and an agent driving
+the Bench MCP tool see the same diagnostic. The desktop client
+(`GatewayApiError` in `api.ts`, `BenchDiagnosticsPanel` in
+`EngineeringViews.tsx`) renders it inline under the error line on a
+`capture_timeout`.
+
+This directly targets the open acceptance note above: *"`/dev/ttyUSB0` was
+enumerated, but the Bench E2E timed out without receiving a complete
+block."* The diagnostic surface and its parsing are verified (unit tests in
+`tests/test_blocks.py`, `tests/test_services.py`, `tests/test_gateway_server.py`,
+a mocked-gateway E2E scenario), but the underlying hardware acceptance
+re-test — confirming the firmware actually reaches this workstation and
+what the diagnostics say when it does — needs a session with the ESP32
+connected and emitting a block, which this implementation session did not
+have.
+
 ## Workspace and model scope
 
 Every session receives the detected `rocketry-portfolio` repository root as
@@ -388,9 +414,11 @@ distributed product. Status of the items originally tracked here:
    unimplemented until one is confirmed to exist.
 3. **Done** — diff inspector and per-operation elapsed time (see "Diff
    inspector" above).
-4. still open — a Bench handshake/diagnostic view (bytes received, last
-   protocol line, expected block markers) and repeat capture acceptance
-   with the firmware actively emitting a block;
+4. **Done, hardware re-test still open** — a Bench handshake/diagnostic view
+   (bytes received, last protocol line, expected block markers; see
+   "Bench handshake/diagnostic view" above). Repeating capture acceptance
+   with the firmware actively emitting a block needs a session with the
+   ESP32 connected.
 5. still open — visual regression snapshots for 900, 1280 and 1440 pixel
    widths.
 6. **Out of scope** — packaging the Python gateway as a sidecar. This is a
