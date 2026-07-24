@@ -50,8 +50,10 @@ def normalize_codex(payload: dict[str, Any]) -> list[ProviderEvent]:
         events.append(ProviderEvent("session", f"Turn {turn.get('status', 'completed')}", data={"turn": turn}, raw=payload))
     elif method == "thread/compacted":
         events.append(ProviderEvent("session", "Context compacted", data=params, raw=payload))
-    elif method in {"thread/tokenUsage/updated", "turn/plan/updated"}:
+    elif method == "thread/tokenUsage/updated":
         events.append(ProviderEvent("usage", method, data=params, raw=payload))
+    elif method == "turn/plan/updated":
+        events.append(ProviderEvent("plan_updated", method, data=params, raw=payload))
     elif method == "error":
         error = params.get("error") if isinstance(params.get("error"), dict) else params
         events.append(ProviderEvent("error", str(error.get("message") if isinstance(error, dict) else error), data=params, raw=payload))

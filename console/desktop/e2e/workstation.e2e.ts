@@ -69,7 +69,7 @@ const events = [
   },
 ];
 
-async function mockGateway(page: Page) {
+async function mockGateway(page: Page, sessionEvents: typeof events = events) {
   let selectedModel = "default";
   let sessionLoads = 0;
   let sessionDeleted = false;
@@ -154,7 +154,7 @@ async function mockGateway(page: Page) {
     } else if (path === "/api/sessions/session-1/connect") {
       payload = { ok: true, session: { ...baseSession, metadata: { model: selectedModel } } };
     } else if (path === "/api/sessions/session-1/events") {
-      payload = { ok: true, events };
+      payload = { ok: true, events: sessionEvents };
     } else if (path === "/api/sessions/session-1/approvals") {
       payload = { ok: true, approvals: [] };
     } else if (path === "/api/sessions/session-1/model" && method === "POST") {
@@ -204,6 +204,105 @@ test("agent workspace renders Markdown, repository scope and native model select
 
   await expect(page.locator(".composer")).toContainText("opus / 2 commands");
   await expect(composer).toHaveValue("");
+});
+
+const richActivityEvents = [
+  events[0],
+  events[1],
+  {
+    sequence: 3,
+    id: "thinking-1",
+    session_id: "session-1",
+    created_at: now,
+    type: "thinking",
+    role: "assistant",
+    text: "Checking the CI log before answering",
+    data: {},
+    raw: {},
+  },
+  {
+    sequence: 4,
+    id: "tool-start-1",
+    session_id: "session-1",
+    created_at: now,
+    type: "tool_started",
+    role: null,
+    text: "Bash",
+    data: { tool: { id: "tool-1", name: "Bash", input: { command: "pytest -q" } } },
+    raw: {},
+  },
+  {
+    sequence: 5,
+    id: "tool-done-1",
+    session_id: "session-1",
+    created_at: now,
+    type: "tool_completed",
+    role: null,
+    text: "done",
+    data: { tool_result: { tool_use_id: "tool-1", content: "12 passed", is_error: false } },
+    raw: {},
+  },
+  {
+    sequence: 6,
+    id: "subagent-start-1",
+    session_id: "session-1",
+    created_at: now,
+    type: "subagent_started",
+    role: null,
+    text: "Investigate flaky test",
+    data: { task_id: "task-1", tool_use_id: "tool-2" },
+    raw: {},
+  },
+  {
+    sequence: 7,
+    id: "subagent-done-1",
+    session_id: "session-1",
+    created_at: now,
+    type: "subagent_completed",
+    role: null,
+    text: "Root cause: unseeded RNG",
+    data: { task_id: "task-1", status: "completed" },
+    raw: {},
+  },
+  {
+    sequence: 8,
+    id: "plan-1",
+    session_id: "session-1",
+    created_at: now,
+    type: "plan_updated",
+    role: null,
+    text: "turn/plan/updated",
+    data: { plan: [{ step: "Seed the RNG in the fixture", status: "completed" }] },
+    raw: {},
+  },
+  {
+    sequence: 9,
+    id: "assistant-final",
+    session_id: "session-1",
+    created_at: now,
+    type: "assistant_message",
+    role: "assistant",
+    text: "Fixed the flaky test.",
+    data: {},
+    raw: {},
+  },
+];
+
+test("thinking, tool calls, subagents and plan updates render inline in the conversation", async ({ page }) => {
+  await mockGateway(page, richActivityEvents);
+  await page.goto("/");
+
+  const feed = page.locator(".message-feed");
+  await expect(feed.locator(".timeline-thinking")).toContainText("Checking the CI log");
+  await expect(feed.locator(".timeline-subagent")).toContainText("Root cause: unseeded RNG");
+  await expect(feed.locator(".timeline-plan li.status-completed")).toContainText("Seed the RNG in the fixture");
+
+  const tool = feed.locator(".timeline-tool");
+  await expect(tool).toContainText("Bash");
+  await tool.locator(".timeline-tool-head").click();
+  await expect(tool.locator(".timeline-tool-body")).toContainText("12 passed");
+
+  await expect(feed.locator(".message.assistant").last()).toContainText("Fixed the flaky test.");
 });
 
 test("conversation deletion requires confirmation and clears the selected session", async ({ page }) => {

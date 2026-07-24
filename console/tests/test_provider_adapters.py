@@ -11,6 +11,11 @@ from claude_agent_sdk import (
     ResultMessage,
     StreamEvent,
     SystemMessage,
+    TaskNotificationMessage,
+    TaskProgressMessage,
+    TaskStartedMessage,
+    TaskUpdatedMessage,
+    ThinkingBlock,
     ToolPermissionContext,
     ToolUseBlock,
 )
@@ -193,6 +198,24 @@ class ProviderNormalizationTests(unittest.TestCase):
             [event.type for event in result],
             ["assistant_message", "usage", "session"],
         )
+
+    def test_codex_plan_update_is_not_mislabeled_as_usage(self):
+        plan = normalize_codex(
+            {
+                "method": "turn/plan/updated",
+                "params": {"plan": [{"step": "Read config", "status": "completed"}]},
+            }
+        )
+        usage = normalize_codex(
+            {
+                "method": "thread/tokenUsage/updated",
+                "params": {"totalTokens": 42},
+            }
+        )
+
+        self.assertEqual(plan[0].type, "plan_updated")
+        self.assertEqual(plan[0].data["plan"], [{"step": "Read config", "status": "completed"}])
+        self.assertEqual(usage[0].type, "usage")
 
     def test_codex_routes_native_approval_request(self):
         async def exercise():
@@ -401,6 +424,85 @@ class ProviderNormalizationTests(unittest.TestCase):
             self.assertTrue(options.sandbox["enabled"])
             self.assertTrue(options.sandbox["autoAllowBashIfSandboxed"])
         self.assertEqual(result.updated_permissions[0].destination, "session")
+
+    def test_claude_normalizes_thinking_block(self):
+        thinking = normalize_sdk_message(
+            AssistantMessage(
+                content=[ThinkingBlock(thinking="considering options", signature="sig")],
+                model="claude",
+            )
+        )
+        self.assertEqual(
+            (thinking[0].type, thinking[0].text, thinking[0].role),
+            ("thinking", "considering options", "assistant"),
+        )
+
+    def test_claude_normalizes_subagent_task_lifecycle(self):
+        started = normalize_sdk_message(
+            TaskStartedMessage(
+                subtype="task_started",
+                data={},
+                task_id="task-1",
+                description="Investigate flaky test",
+                uuid="uuid-1",
+                session_id="session-1",
+                tool_use_id="tool-1",
+                task_type="general-purpose",
+            )
+        )
+        progress = normalize_sdk_message(
+            TaskProgressMessage(
+                subtype="task_progress",
+                data={},
+                task_id="task-1",
+                description="Investigate flaky test",
+                usage={"total_tokens": 100, "tool_uses": 2, "duration_ms": 500},
+                uuid="uuid-2",
+                session_id="session-1",
+                tool_use_id="tool-1",
+                last_tool_name="Bash",
+            )
+        )
+        notified = normalize_sdk_message(
+            TaskNotificationMessage(
+                subtype="task_notification",
+                data={},
+                task_id="task-1",
+                status="completed",
+                output_file="",
+                summary="Found root cause",
+                uuid="uuid-3",
+                session_id="session-1",
+                tool_use_id="tool-1",
+            )
+        )
+        updated_running = normalize_sdk_message(
+            TaskUpdatedMessage(
+                subtype="task_updated",
+                data={},
+                task_id="task-1",
+                patch={"status": "running"},
+                status="running",
+            )
+        )
+        updated_killed = normalize_sdk_message(
+            TaskUpdatedMessage(
+                subtype="task_updated",
+                data={},
+                task_id="task-1",
+                patch={"status": "killed"},
+                status="killed",
+            )
+        )
+
+        self.assertEqual(
+            (started[0].type, started[0].text, started[0].data["task_id"]),
+            ("subagent_started", "Investigate flaky test", "task-1"),
+        )
+        self.assertEqual((progress[0].type, progress[0].text), ("subagent_progress", "Investigate flaky test"))
+        self.assertEqual((notified[0].type, notified[0].text), ("subagent_completed", "Found root cause"))
+        self.assertEqual(updated_running[0].type, "subagent_progress")
+        self.assertEqual(updated_killed[0].type, "subagent_completed")
 
     def test_claude_discards_internal_status_and_compacts_init(self):
         self.assertEqual(

@@ -22,8 +22,9 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
-import { CSSProperties, FormEvent, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GatewayApi, connectGateway } from "./api";
+import { buildTimeline, Timeline } from "./ActivityFeed";
 import {
   BenchView,
   FlightView,
@@ -49,43 +50,23 @@ import type {
 
 type View = "agent" | "bench" | "wiring" | "motor" | "flight" | "history" | "usage";
 type ResultTab = "runs" | "activity" | "artifacts";
-const MessageContent = lazy(() =>
-  import("./MessageContent").then((module) => ({ default: module.MessageContent })),
-);
 
-interface ConversationItem {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  streaming?: boolean;
-}
-
-export function conversationFrom(events: AgentEvent[]): ConversationItem[] {
-  const messages: ConversationItem[] = [];
-  let streaming = "";
-  let streamingId = "";
-  for (const event of events) {
-    if (event.type === "user_message") {
-      if (streaming) messages.push({ id: streamingId, role: "assistant", text: streaming, streaming: true });
-      streaming = "";
-      messages.push({ id: event.id, role: "user", text: event.text });
-    } else if (event.type === "assistant_delta") {
-      streamingId ||= event.id;
-      streaming += event.text;
-    } else if (event.type === "assistant_message") {
-      streaming = "";
-      streamingId = "";
-      messages.push({ id: event.id, role: "assistant", text: event.text });
-    }
-  }
-  if (streaming) messages.push({ id: streamingId, role: "assistant", text: streaming, streaming: true });
-  return messages;
-}
+const RAW_LOG_EVENT_TYPES = [
+  "tool_started",
+  "tool_progress",
+  "tool_completed",
+  "command_output",
+  "reasoning",
+  "thinking",
+  "subagent_started",
+  "subagent_progress",
+  "subagent_completed",
+  "plan_updated",
+  "error",
+];
 
 export function activityEvents(events: AgentEvent[]): AgentEvent[] {
-  return events.filter((event) =>
-    ["tool_started", "tool_progress", "tool_completed", "command_output", "reasoning", "error"].includes(event.type),
-  );
+  return events.filter((event) => RAW_LOG_EVENT_TYPES.includes(event.type));
 }
 
 function compactDetail(value: unknown): string {
@@ -135,7 +116,7 @@ export default function App() {
   const warmed = useRef<Set<string>>(new Set());
 
   const selectedSession = sessions.find((session) => session.id === selectedId) || null;
-  const conversation = useMemo(() => conversationFrom(events), [events]);
+  const timeline = useMemo(() => buildTimeline(events), [events]);
   const activity = useMemo(() => activityEvents(events), [events]);
   const commands = useMemo(() => {
     const capability = [...events].reverse().find((event) => event.text === "Provider capabilities");
@@ -261,7 +242,7 @@ export default function App() {
 
   useEffect(() => {
     if (!reducedMotion) feedEnd.current?.scrollIntoView({ behavior: "smooth" });
-  }, [conversation.length, reducedMotion]);
+  }, [timeline.length, reducedMotion]);
 
   useEffect(() => {
     if (!api || !runs.length || selectedRun) return;
@@ -553,8 +534,8 @@ export default function App() {
                         <div className="agent-state"><span className={socketConnected ? "online" : ""} />{warming ? (language === "es" ? "Conectando" : "Connecting") : isRunning ? t("agentWorking") : t("agentReady")}</div>
                       </header>
                       <div className="message-feed">
-                        {!conversation.length && <div className="agent-intro"><span>R/ AGENT HARNESS</span><h2>{t("noConversation")}</h2><p>{language === "es" ? "Puedes pedir una prueba en lenguaje natural o escribir / para usar un comando del proveedor." : "Ask for a test in natural language or type / to use a provider command."}</p></div>}
-                        {conversation.map((message) => <motion.article initial={reducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className={`message ${message.role}`} key={message.id}><span>{message.role === "user" ? "YOU" : selectedSession.provider.toUpperCase()}</span><Suspense fallback={<div>{message.text}</div>}><MessageContent text={message.text} /></Suspense>{message.streaming && <i />}</motion.article>)}
+                        {!timeline.length && <div className="agent-intro"><span>R/ AGENT HARNESS</span><h2>{t("noConversation")}</h2><p>{language === "es" ? "Puedes pedir una prueba en lenguaje natural o escribir / para usar un comando del proveedor." : "Ask for a test in natural language or type / to use a provider command."}</p></div>}
+                        <Timeline items={timeline} provider={selectedSession.provider} language={language} />
                         {approvals.map((approval) => <section className="approval-panel" key={approval.id}><div><strong>{t("needsApproval")}</strong><span>{approval.action}</span></div><pre>{compactDetail(approval.details)}</pre><div><button onClick={() => void resolveApproval(approval, false)}><X />{t("deny")}</button><button onClick={() => void resolveApproval(approval, true)}><Check />{t("approve")}</button><button className="primary" onClick={() => void resolveApproval(approval, true, true)}>{t("approveSession")}</button></div></section>)}
                         <div ref={feedEnd} />
                       </div>

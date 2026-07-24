@@ -17,7 +17,13 @@ from claude_agent_sdk import (
     ResultMessage,
     StreamEvent,
     SystemMessage,
+    TaskNotificationMessage,
+    TaskProgressMessage,
+    TaskStartedMessage,
+    TaskUpdatedMessage,
+    TERMINAL_TASK_STATUSES,
     TextBlock,
+    ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
     UserMessage,
@@ -164,6 +170,10 @@ def normalize_sdk_message(message: Any) -> list[ProviderEvent]:
                         raw=raw,
                     )
                 )
+            elif isinstance(block, ThinkingBlock):
+                events.append(
+                    ProviderEvent("thinking", block.thinking, "assistant", raw=raw)
+                )
             elif isinstance(block, TextBlock):
                 # Complete text is useful when partial streaming is disabled.
                 # With partial streaming enabled it is intentionally omitted to
@@ -227,6 +237,53 @@ def normalize_sdk_message(message: Any) -> list[ProviderEvent]:
             ]
         )
         return events
+    if isinstance(message, TaskStartedMessage):
+        return [
+            ProviderEvent(
+                "subagent_started",
+                message.description,
+                data={
+                    "task_id": message.task_id,
+                    "tool_use_id": message.tool_use_id,
+                    "task_type": message.task_type,
+                },
+            )
+        ]
+    if isinstance(message, TaskProgressMessage):
+        return [
+            ProviderEvent(
+                "subagent_progress",
+                message.description,
+                data={
+                    "task_id": message.task_id,
+                    "tool_use_id": message.tool_use_id,
+                    "last_tool_name": message.last_tool_name,
+                    "usage": message.usage,
+                },
+            )
+        ]
+    if isinstance(message, TaskNotificationMessage):
+        return [
+            ProviderEvent(
+                "subagent_completed",
+                message.summary,
+                data={
+                    "task_id": message.task_id,
+                    "tool_use_id": message.tool_use_id,
+                    "status": message.status,
+                    "usage": message.usage,
+                },
+            )
+        ]
+    if isinstance(message, TaskUpdatedMessage):
+        terminal = message.status in TERMINAL_TASK_STATUSES if message.status else False
+        return [
+            ProviderEvent(
+                "subagent_completed" if terminal else "subagent_progress",
+                f"Task {message.status or 'updated'}",
+                data={"task_id": message.task_id, "status": message.status, "patch": message.patch},
+            )
+        ]
     if isinstance(message, SystemMessage):
         if message.subtype != "init":
             return []

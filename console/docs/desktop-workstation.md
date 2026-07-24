@@ -152,6 +152,51 @@ Agent messages render GitHub-flavored Markdown, including emphasis, lists,
 links, tables and code blocks. Raw HTML is deliberately not enabled, so
 provider output cannot inject executable markup into the desktop client.
 
+## Native agent parity — 2026-07-23
+
+Comparing this client against using Codex or Claude Code directly in a
+terminal surfaced concrete gaps, not vague polish:
+
+- Conversation text and everything else the agent did (tool calls, edits,
+  reasoning) were split across a chat pane and a disconnected "Activity"
+  tab, rendered as raw JSON — losing the single narrative a terminal
+  session shows.
+- Claude's extended thinking (`ThinkingBlock`) was silently dropped by the
+  adapter.
+- Claude subagents (the `Task` tool) were invisible — the Agent SDK's
+  `TaskStartedMessage` / `TaskProgressMessage` / `TaskNotificationMessage` /
+  `TaskUpdatedMessage` were unhandled.
+- Codex's `turn/plan/updated` (its TodoWrite-equivalent) was mislabeled as a
+  `"usage"` event — a real normalization bug, not a rendering gap.
+
+`gateway/providers/claude.py` and `gateway/providers/codex.py` now emit
+dedicated `thinking`, `subagent_started`/`subagent_progress`/
+`subagent_completed`, and `plan_updated` events (`gateway/models.py`'s
+`EventType` documents the full set); the event pipeline required no schema
+change since `ProviderEvent.type`/`data` are free-form columns already
+passed through unfiltered by `manager.py` and `server.py`.
+
+`desktop/src/ActivityFeed.tsx` replaces the old text-only conversation
+projection with a single chronological timeline: tool calls render as
+collapsible cards correlated across their `tool_started`/`tool_completed`
+pair (by `data.tool.id` for Claude, `data.item.id` for Codex) so one card
+transitions from running to done/failed instead of two disconnected list
+rows; thinking and Codex reasoning render as dimmed inline bubbles;
+subagent activity renders as its own card; Codex plan updates render as a
+checklist. The "Activity" tab remains as a secondary raw event log for
+troubleshooting — it is no longer the primary way to see what the agent is
+doing.
+
+Verified with adapter unit tests (`tests/test_provider_adapters.py`) for
+every new message/payload shape, a frontend unit test
+(`desktop/src/App.test.ts`) asserting the merge order, and a mocked-gateway
+Playwright scenario (`desktop/e2e/workstation.e2e.ts`) asserting thinking,
+a tool call, a subagent and a plan update all render inline in the
+conversation. Not yet exercised against a live Claude or Codex turn — the
+exact `AskUserQuestion` input shape and Codex `fileChange` diff field
+(needed for the next two phases) still need that live confirmation before
+their parsers are considered final.
+
 ## Workspace and model scope
 
 Every session receives the detected `rocketry-portfolio` repository root as

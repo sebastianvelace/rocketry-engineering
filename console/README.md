@@ -94,8 +94,13 @@ The desktop client provides:
   edits use `acceptEdits`, and a narrow set of read/verification Bash commands
   is allowed while installs, publishing and arbitrary shell remain gated;
 - live engineering plots, run comparison, CSV export and persistent artifacts;
-- a bilingual English/Spanish interface saved in local preferences; and
-- a normalized activity view with raw command output available when relevant.
+- a bilingual English/Spanish interface saved in local preferences;
+- a single chronological conversation timeline — thinking, tool calls,
+  subagent activity and plan updates render inline next to the reply that
+  produced them, the same narrative a terminal session shows, instead of a
+  separate activity tab; and
+- a secondary raw event log for troubleshooting, once activity moved into
+  the conversation itself.
 
 Claude is intentionally started with the Rocketry MCP only. Built-in Claude
 Code tools and project commands remain available, while unrelated account
