@@ -74,6 +74,18 @@ export class GatewayApi {
     ).session;
   }
 
+  async setModel(sessionId: string, model: string): Promise<Session> {
+    return (
+      await this.request<{ session: Session }>(
+        `/api/sessions/${sessionId}/model`,
+        {
+          method: "POST",
+          body: JSON.stringify({ model }),
+        },
+      )
+    ).session;
+  }
+
   async events(sessionId: string, after = 0): Promise<AgentEvent[]> {
     return (
       await this.request<{ events: AgentEvent[] }>(

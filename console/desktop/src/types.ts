@@ -19,6 +19,7 @@ export interface Session {
   status: SessionStatus;
   created_at: string;
   updated_at: string;
+  metadata: Record<string, unknown>;
 }
 
 export interface AgentEvent {
@@ -67,6 +68,16 @@ export interface ProviderCommand {
   description: string;
   argumentHint?: string;
   aliases?: string[];
+}
+
+export interface ProviderModel {
+  value: string;
+  resolvedModel: string;
+  displayName: string;
+  description: string;
+  supportsEffort?: boolean;
+  supportedEffortLevels?: string[];
+  supportsFastMode?: boolean;
 }
 
 export interface WiringPin {

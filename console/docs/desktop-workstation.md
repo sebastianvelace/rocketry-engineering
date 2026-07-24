@@ -45,7 +45,10 @@ binary:
   attached to the Claude account;
 - a provider prewarm when a session is selected, without submitting a model
   turn; and
-- the live command catalog reported by Claude Code for composer completion.
+- the live command catalog reported by Claude Code for composer completion;
+- a native `/model` picker populated from Claude Code's own capability
+  response; and
+- per-session model persistence and restoration when a conversation reconnects.
 
 Internal Claude status and hook payloads are not persisted. The gateway keeps
 only a compact initialization event, visible tool activity, assistant output
@@ -91,7 +94,31 @@ The global rail owns Agent, Bench, Wiring, Motor, Flight and History. Agent
 opens a secondary session rail, a conversation and approval pane, and a result
 dock. Engineering surfaces use rules, forms and data fields rather than a
 dashboard of repeated cards. English and Spanish labels persist in local
-storage across views and restarts.
+storage across views and restarts. The global rail can be resized from 58 to
+118 pixels by dragging its right edge (or with the arrow keys while its
+separator is focused); a double click or the Home key restores the default.
+Native selects use the same dark instrument styling as the rest of the
+application.
+
+Agent messages render GitHub-flavored Markdown, including emphasis, lists,
+links, tables and code blocks. Raw HTML is deliberately not enabled, so
+provider output cannot inject executable markup into the desktop client.
+
+## Workspace and model scope
+
+Every session receives the detected `rocketry-portfolio` repository root as
+its workspace, rather than only the `console/` directory. The session footer exposes that boundary as
+`rocketry-portfolio / full repository` so the operator can verify the scope
+without trusting hidden configuration. Codex applies the current
+`workspace-write` sandbox preset to that root; Claude Code starts with the same working directory and its normal
+built-in repository tools.
+
+Typing `/model` in a Claude session opens the native model selector instead of
+sending a conversational prompt. Selecting a model calls the Agent SDK's live
+`set_model` operation and saves the choice in the session metadata. A resumed
+session restores that choice before accepting the next turn. Model options
+are never hard-coded in React; they come from the installed Claude Code
+process, so the interface follows the subscription's actual availability.
 
 ## Native engineering surfaces
 
@@ -121,8 +148,21 @@ There is no duplicate simulation implementation in React.
 - Wiring JSON delivered visible UTF-8 SVG and localized pin instructions.
 - Visual inspection covered Agent, Wiring prepare/connect and Motor at
   1600 by 960.
-- No `/dev/ttyUSB*` or `/dev/ttyACM*` device was present during this
-  acceptance, so a live serial capture was not claimed.
+- Follow-up acceptance verified the live Claude model catalog and a model
+  change to Haiku, semantic Markdown output without literal `**` markers, a
+  112-pixel expanded navigation rail, and dark Flight selectors.
+- Codex 0.145.0 rejected the legacy `workspaceWrite` request value. Updating
+  thread start and resume to `workspace-write` restored the provider; a real
+  streamed turn completed with `CODEX_E2E_OK` in about five seconds.
+- A fresh Claude session completed a real streamed turn with
+  `CLAUDE_E2E_OK` in about 1.5 seconds.
+- A one-geometry openMotor E2E created run #8 with one viable `67F133`
+  configuration and 66.54 N·s simulated impulse.
+- An OpenRocket E2E created run #9 with 1503.33 m simulated apogee and no
+  reported warnings.
+- `/dev/ttyUSB0` was enumerated, but the Bench E2E timed out without receiving
+  a complete block. The application reported `capture_timeout` correctly; the
+  firmware/serial trigger remains an open hardware acceptance item.
 
 ## Security constraints
 
@@ -143,6 +183,8 @@ There is no duplicate simulation implementation in React.
   `CLAUDE_GATEWAY_OK`.
 - Existing real Codex app-server start, stream and resume probe.
 - React event projection and bilingual copy tests.
+- Playwright browser E2E for Markdown, repository scope, native model
+  selection, navigation resizing and dark engineering controls.
 - TypeScript/Vite production build.
 - Rust `cargo check`.
 - Tauri debug executable build.
@@ -158,8 +200,9 @@ installer. Before calling it a first packaged release:
 2. add structured answers for Claude `AskUserQuestion` and Codex
    `requestUserInput`;
 3. add a diff inspector and per-operation progress detail;
-4. run ESP32 disconnect/capture cancellation acceptance with the device
-   attached;
+4. add a Bench handshake/diagnostic view (bytes received, last protocol line,
+   expected block markers) and repeat capture acceptance with the firmware
+   actively emitting a block;
 5. add visual regression snapshots for 900, 1280 and 1440 pixel widths;
 6. package the Python gateway as a sidecar instead of depending on the
    repository `.venv`; and

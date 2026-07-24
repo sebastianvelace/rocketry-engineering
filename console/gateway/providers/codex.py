@@ -140,7 +140,7 @@ class CodexAdapter:
                 {
                     "threadId": self.provider_session_id,
                     "approvalPolicy": "on-request",
-                    "sandbox": "workspaceWrite",
+                    "sandbox": "workspace-write",
                     "cwd": str(self.workspace),
                 },
             )
@@ -150,7 +150,7 @@ class CodexAdapter:
                 {
                     "cwd": str(self.workspace),
                     "approvalPolicy": "on-request",
-                    "sandbox": "workspaceWrite",
+                    "sandbox": "workspace-write",
                     "serviceName": "rocketry_workstation",
                 },
             )

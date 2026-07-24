@@ -21,6 +21,7 @@ class FakeAdapter:
     ):
         self.provider_session_id = provider_session_id or f"{provider}-thread"
         self.prompts = []
+        self.models = []
 
     async def start(self):
         return self.provider_session_id
@@ -31,6 +32,9 @@ class FakeAdapter:
 
     async def interrupt(self):
         return None
+
+    async def set_model(self, model):
+        self.models.append(model)
 
     async def close(self):
         return None
@@ -152,6 +156,23 @@ class GatewayServerTests(unittest.TestCase):
         connected = asyncio.run(exercise())
         self.assertEqual(connected.status_code, 200)
         self.assertEqual(connected.json()["session"]["status"], "ready")
+        self.assertEqual(self.adapters[0].prompts, [])
+
+    def test_claude_model_change_is_persisted_without_a_turn(self):
+        async def exercise():
+            session = await self.create_session(provider="claude")
+            changed = await self.request(
+                "POST",
+                f"/api/sessions/{session['id']}/model",
+                headers=self.headers,
+                json={"model": "opus"},
+            )
+            return changed
+
+        changed = asyncio.run(exercise())
+        self.assertEqual(changed.status_code, 200)
+        self.assertEqual(changed.json()["session"]["metadata"]["model"], "opus")
+        self.assertEqual(self.adapters[0].models, ["opus"])
         self.assertEqual(self.adapters[0].prompts, [])
 
     def test_wiring_endpoint_returns_browser_safe_svg(self):

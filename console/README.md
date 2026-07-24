@@ -23,9 +23,9 @@ same contracts.
 | History | Reopens, compares, exports and manages saved runs. |
 | Agent | Runs durable Codex or Claude Code sessions, streams their work and exposes approvals without a browser shell. |
 
-Use the `Language / Idioma` selector in the sidebar to switch the complete
-console between English and Spanish. The selection remains active for the
-current browser session.
+Use the compact `ES / EN` switch in the global rail to change the complete
+console between English and Spanish. The preference persists across views and
+application restarts.
 
 ## Setup
 
@@ -76,6 +76,11 @@ The desktop client provides:
 - inline permission approval and interruption;
 - the same saved runs whether an operation starts manually or through an agent;
 - Claude Code command discovery by typing `/` in the composer;
+- a native `/model` selector backed by Claude Code's current model catalog,
+  with the choice remembered per session;
+- GitHub-flavored Markdown rendering for agent messages;
+- an explicitly visible full-repository workspace boundary;
+- a resizable global navigation rail and consistently dark native controls;
 - provider prewarming without consuming a model turn;
 - live engineering plots, run comparison, CSV export and persistent artifacts;
 - a bilingual English/Spanish interface saved in local preferences; and
@@ -113,9 +118,13 @@ Run the complete local check:
 
 ```bash
 bash tools/ci_check.sh
-cd desktop && pnpm test && pnpm build
+cd desktop && pnpm test && pnpm build && pnpm test:e2e
 cd desktop/src-tauri && cargo check
 ```
+
+The browser E2E suite uses the installed Google Chrome build and a deterministic
+mock gateway. It does not consume Claude or Codex quota. Live provider probes
+remain explicit opt-in checks.
 
 It compiles the Python sources, runs unit and Streamlit page smoke tests, then
 checks the Git diff for whitespace errors.

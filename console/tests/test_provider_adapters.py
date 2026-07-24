@@ -26,6 +26,44 @@ from gateway.providers.json_process import JsonLineProcess
 
 
 class ProviderNormalizationTests(unittest.TestCase):
+    def test_codex_thread_uses_current_workspace_write_preset(self):
+        async def exercise():
+            requests = []
+
+            async def emit(event):
+                pass
+
+            async def approve(request):
+                pass
+
+            adapter = CodexAdapter(
+                workspace=Path("/tmp"),
+                event_sink=emit,
+                approval_sink=approve,
+            )
+
+            async def start_process():
+                pass
+
+            async def send(payload):
+                pass
+
+            async def request(method, params, **kwargs):
+                requests.append((method, params))
+                if method == "thread/start":
+                    return {"thread": {"id": "thread-1"}}
+                return {}
+
+            adapter.process.start = start_process
+            adapter.process.send = send
+            adapter._request = request
+            await adapter.start()
+            return requests
+
+        requests = asyncio.run(exercise())
+        thread_start = next(params for method, params in requests if method == "thread/start")
+        self.assertEqual(thread_start["sandbox"], "workspace-write")
+
     def test_codex_normalizes_stream_tools_and_completion(self):
         delta = normalize_codex(
             {

@@ -254,6 +254,7 @@ class ClaudeAdapter:
         self._resuming = provider_session_id is not None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._receiver: asyncio.Task | None = None
+        self.available_models: list[dict[str, Any]] = []
         self._pending_permissions: dict[
             str,
             tuple[asyncio.Future, dict[str, Any], list[Any]],
@@ -326,13 +327,14 @@ class ClaudeAdapter:
         try:
             await self.client.connect()
             info = await self.client.get_server_info() or {}
+            self.available_models = list(info.get("models") or [])
             await self.event_sink(
                 ProviderEvent(
                     "session",
                     "Provider capabilities",
                     data={
                         "commands": list(info.get("commands") or []),
-                        "models": list(info.get("models") or []),
+                        "models": self.available_models,
                         "output_style": info.get("output_style"),
                     },
                 )
@@ -340,6 +342,16 @@ class ClaudeAdapter:
         except Exception as exc:
             raise ProviderError(f"Claude Code failed to start: {exc}") from exc
         return self.provider_session_id
+
+    async def set_model(self, model: str) -> None:
+        allowed = {
+            str(item.get("value"))
+            for item in self.available_models
+            if isinstance(item, dict) and item.get("value")
+        }
+        if model not in allowed:
+            raise ProviderError(f"Claude model is not available: {model}")
+        await self.client.set_model(None if model == "default" else model)
 
     async def _receive_turn(self) -> None:
         try:

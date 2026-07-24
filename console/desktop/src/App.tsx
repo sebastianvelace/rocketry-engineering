@@ -16,10 +16,11 @@ import {
   ClockCounterClockwise,
   PlugsConnected,
   ChatCircleDots,
+  WarningCircle,
   X,
 } from "@phosphor-icons/react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GatewayApi, connectGateway } from "./api";
 import {
   BenchView,
@@ -37,6 +38,7 @@ import type {
   EngineeringStatus,
   Provider,
   ProviderCommand,
+  ProviderModel,
   RunRecord,
   RunSummary,
   Session,
@@ -44,6 +46,9 @@ import type {
 
 type View = "agent" | "bench" | "wiring" | "motor" | "flight" | "history";
 type ResultTab = "runs" | "activity" | "artifacts";
+const MessageContent = lazy(() =>
+  import("./MessageContent").then((module) => ({ default: module.MessageContent })),
+);
 
 interface ConversationItem {
   id: string;
@@ -118,6 +123,8 @@ export default function App() {
   const [socketConnected, setSocketConnected] = useState(false);
   const [warming, setWarming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [railWidth, setRailWidth] = useState(() => Number(localStorage.getItem("rocketry-rail-width")) || 72);
   const feedEnd = useRef<HTMLDivElement>(null);
   const warmed = useRef<Set<string>>(new Set());
 
@@ -128,6 +135,11 @@ export default function App() {
     const capability = [...events].reverse().find((event) => event.text === "Provider capabilities");
     return (capability?.data.commands || []) as ProviderCommand[];
   }, [events]);
+  const models = useMemo(() => {
+    const capability = [...events].reverse().find((event) => event.text === "Provider capabilities");
+    return (capability?.data.models || []) as ProviderModel[];
+  }, [events]);
+  const currentModel = String(selectedSession?.metadata?.model || "default");
   const commandMatches = useMemo(() => {
     if (!composer.startsWith("/") || composer.includes(" ")) return [];
     const query = composer.slice(1).toLowerCase();
@@ -158,6 +170,7 @@ export default function App() {
     document.documentElement.lang = language;
   }, [language]);
   useEffect(() => { localStorage.setItem("rocketry-view", view); }, [view]);
+  useEffect(() => { localStorage.setItem("rocketry-rail-width", String(railWidth)); }, [railWidth]);
 
   const refreshEngineering = useCallback(async () => {
     if (!api) return;
@@ -185,7 +198,10 @@ export default function App() {
     warmed.current.add(selectedId);
     setWarming(true);
     void api.connectSession(selectedId)
-      .then(() => refreshSessions())
+      .then(() => {
+        setConnectionError("");
+        return refreshSessions();
+      })
       .catch((error) => {
         warmed.current.delete(selectedId);
         setConnectionError(error instanceof Error ? error.message : String(error));
@@ -247,6 +263,17 @@ export default function App() {
     event.preventDefault();
     if (!api || !selectedId || !composer.trim() || busy) return;
     const value = composer.trim();
+    const modelCommand = value.match(/^\/model(?:\s+(.+))?$/i);
+    if (selectedSession?.provider === "claude" && modelCommand) {
+      if (!modelCommand[1]) {
+        setComposer("");
+        setModelPickerOpen(true);
+        return;
+      }
+      await changeModel(modelCommand[1].trim());
+      setComposer("");
+      return;
+    }
     setComposer("");
     setBusy(true);
     try { await api.send(selectedId, value); await refreshSessions(); }
@@ -260,6 +287,64 @@ export default function App() {
     if (!api) return;
     await api.resolveApproval(approval.id, approved, forSession);
     setApprovals(await api.approvals(approval.session_id));
+  }
+
+  async function retrySelectedConnection() {
+    if (!api || !selectedId) return;
+    setWarming(true);
+    setConnectionError("");
+    try {
+      await api.connectSession(selectedId);
+      warmed.current.add(selectedId);
+      await refreshSessions();
+    } catch (error) {
+      warmed.current.delete(selectedId);
+      setConnectionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setWarming(false);
+    }
+  }
+
+  async function changeModel(model: string) {
+    if (!api || !selectedId) return;
+    setBusy(true);
+    setConnectionError("");
+    try {
+      const updated = await api.setModel(selectedId, model);
+      setSessions((current) => current.map((session) => session.id === updated.id ? updated : session));
+      setComposer("");
+      setModelPickerOpen(false);
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function chooseCommand(command: ProviderCommand) {
+    if (command.name === "model" && selectedSession?.provider === "claude") {
+      setComposer("");
+      setModelPickerOpen(true);
+      return;
+    }
+    setComposer(`/${command.name}${command.argumentHint ? " " : ""}`);
+  }
+
+  function beginRailResize(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = railWidth;
+    const move = (next: PointerEvent) => {
+      setRailWidth(Math.max(58, Math.min(118, startWidth + next.clientX - startX)));
+    };
+    const stop = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", stop);
+      document.body.classList.remove("resizing-rail");
+    };
+    document.body.classList.add("resizing-rail");
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", stop);
   }
 
   if (!api) return (
@@ -282,7 +367,29 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className={`app-shell view-${view}`}>
+      <div
+        className={`app-shell view-${view}`}
+        style={{ "--rail-width": `${railWidth}px` } as CSSProperties}
+      >
+        <AnimatePresence>
+          {connectionError && (
+            <motion.aside
+              className="app-notice"
+              role="alert"
+              initial={reducedMotion ? false : { opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -5 }}
+            >
+              <WarningCircle size={17} />
+              <div>
+                <strong>{language === "es" ? "No se pudo conectar el agente" : "Agent connection failed"}</strong>
+                <span>{connectionError}</span>
+              </div>
+              {selectedId && <button onClick={() => void retrySelectedConnection()}>{t("retry")}</button>}
+              <button aria-label={language === "es" ? "Cerrar error" : "Dismiss error"} onClick={() => setConnectionError("")}><X size={15} /></button>
+            </motion.aside>
+          )}
+        </AnimatePresence>
         <aside className="global-rail">
           <div className="brand-mark">R<span>/</span></div>
           <nav>{nav.map(({ id, icon: Icon }) => <motion.button whileTap={{ scale: 0.92 }} className={view === id ? "active" : ""} onClick={() => setView(id)} key={id}><Icon size={21} weight={view === id ? "fill" : "regular"} /><span>{viewCopy[id][language]}</span></motion.button>)}</nav>
@@ -290,6 +397,30 @@ export default function App() {
             <button onClick={() => setLanguage(language === "es" ? "en" : "es")}><strong>{language.toUpperCase()}</strong><span>{language === "es" ? "EN" : "ES"}</span></button>
             <i className={status?.ports.length ? "online" : ""} title={status?.ports[0] || "ESP32 offline"} />
           </footer>
+          <div
+            className="rail-resizer"
+            role="separator"
+            aria-label={language === "es" ? "Cambiar tamaño de navegación" : "Resize navigation"}
+            aria-orientation="vertical"
+            aria-valuemin={58}
+            aria-valuemax={118}
+            aria-valuenow={railWidth}
+            tabIndex={0}
+            onPointerDown={beginRailResize}
+            onDoubleClick={() => setRailWidth(72)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                setRailWidth((width) => Math.max(58, width - 6));
+              } else if (event.key === "ArrowRight") {
+                event.preventDefault();
+                setRailWidth((width) => Math.min(118, width + 6));
+              } else if (event.key === "Home") {
+                event.preventDefault();
+                setRailWidth(72);
+              }
+            }}
+          />
         </aside>
 
         {view === "agent" && (
@@ -305,6 +436,15 @@ export default function App() {
               {!sessions.length && <p>{t("noSessions")}</p>}
             </nav>
             <footer>
+              {selectedSession && (
+                <div className="workspace-scope" title={selectedSession.workspace}>
+                  <FolderOpen size={14} />
+                  <span>
+                    <strong>{selectedSession.workspace.split("/").at(-1)}</strong>
+                    <small>{language === "es" ? "repositorio completo" : "full repository"}</small>
+                  </span>
+                </div>
+              )}
               <span>{status?.saved_runs || 0} {t("savedRuns")}</span>
               <span>{status?.ports[0] || t("disconnected")}</span>
             </footer>
@@ -324,19 +464,43 @@ export default function App() {
                   {!selectedSession ? <section className="empty-workbench"><Robot size={28} /><h1>{t("selectSession")}</h1><button className="button primary" onClick={() => setNewTaskOpen(true)}><Plus size={17} />{t("newTask")}</button></section> : <>
                     <section className="conversation-pane">
                       <header className="pane-header">
-                        <div><p>{selectedSession.provider.toUpperCase()} / {t("conversation")}</p><h1>{selectedSession.title}</h1></div>
+                        <div><p>{selectedSession.provider.toUpperCase()} / {selectedSession.workspace.split("/").at(-1)}</p><h1>{selectedSession.title}</h1></div>
                         <div className="agent-state"><span className={socketConnected ? "online" : ""} />{warming ? (language === "es" ? "Conectando" : "Connecting") : isRunning ? t("agentWorking") : t("agentReady")}</div>
                       </header>
                       <div className="message-feed">
                         {!conversation.length && <div className="agent-intro"><span>R/ AGENT HARNESS</span><h2>{t("noConversation")}</h2><p>{language === "es" ? "Puedes pedir una prueba en lenguaje natural o escribir / para usar un comando del proveedor." : "Ask for a test in natural language or type / to use a provider command."}</p></div>}
-                        {conversation.map((message) => <motion.article initial={reducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className={`message ${message.role}`} key={message.id}><span>{message.role === "user" ? "YOU" : selectedSession.provider.toUpperCase()}</span><div>{message.text}</div>{message.streaming && <i />}</motion.article>)}
+                        {conversation.map((message) => <motion.article initial={reducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className={`message ${message.role}`} key={message.id}><span>{message.role === "user" ? "YOU" : selectedSession.provider.toUpperCase()}</span><Suspense fallback={<div>{message.text}</div>}><MessageContent text={message.text} /></Suspense>{message.streaming && <i />}</motion.article>)}
                         {approvals.map((approval) => <section className="approval-panel" key={approval.id}><div><strong>{t("needsApproval")}</strong><span>{approval.action}</span></div><pre>{compactDetail(approval.details)}</pre><div><button onClick={() => void resolveApproval(approval, false)}><X />{t("deny")}</button><button onClick={() => void resolveApproval(approval, true)}><Check />{t("approve")}</button><button className="primary" onClick={() => void resolveApproval(approval, true, true)}>{t("approveSession")}</button></div></section>)}
                         <div ref={feedEnd} />
                       </div>
                       <form className="composer" onSubmit={sendMessage}>
-                        {commandMatches.length > 0 && <div className="command-palette">{commandMatches.map((command) => <button type="button" onClick={() => setComposer(`/${command.name}${command.argumentHint ? " " : ""}`)} key={command.name}><code>/{command.name}</code><span>{command.description}</span><small>{command.argumentHint}</small></button>)}</div>}
+                        <AnimatePresence>
+                          {modelPickerOpen && (
+                            <motion.div className="model-picker" initial={reducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}>
+                              <header>
+                                <div><span>{language === "es" ? "MODELO DE CLAUDE" : "CLAUDE MODEL"}</span><strong>{language === "es" ? "Selecciona para esta sesión" : "Select for this session"}</strong></div>
+                                <button type="button" onClick={() => setModelPickerOpen(false)}><X size={16} /></button>
+                              </header>
+                              <div>
+                                {!models.length && (
+                                  <p className="model-picker-empty">
+                                    {language === "es" ? "Conecta la sesión para cargar los modelos disponibles." : "Connect the session to load available models."}
+                                  </p>
+                                )}
+                                {models.map((model) => (
+                                  <button type="button" className={currentModel === model.value ? "active" : ""} onClick={() => void changeModel(model.value)} key={model.value}>
+                                    <i>{currentModel === model.value && <Check size={13} weight="bold" />}</i>
+                                    <span><strong>{model.displayName}</strong><small>{model.description}</small></span>
+                                    {model.supportsFastMode && <em>FAST</em>}
+                                  </button>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                        {!modelPickerOpen && commandMatches.length > 0 && <div className="command-palette">{commandMatches.map((command) => <button type="button" onClick={() => chooseCommand(command)} key={command.name}><code>/{command.name}</code><span>{command.description}</span><small>{command.argumentHint}</small></button>)}</div>}
                         <textarea rows={3} value={composer} onChange={(event) => setComposer(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={t("placeholder")} disabled={isRunning || busy || warming} />
-                        <div><span>{commands.length ? `${commands.length} / commands` : `${selectedSession.provider} / ${statusLabel(language, selectedSession.status)}`}</span>{isRunning ? <button type="button" className="button danger" onClick={() => void api.interrupt(selectedSession.id)}><Stop size={15} />{t("stop")}</button> : <button className="button primary" disabled={!composer.trim() || busy || warming}>{busy || warming ? <CircleNotch className="spin" /> : <Check />}{t("send")}</button>}</div>
+                        <div><span>{selectedSession.provider === "claude" ? `${currentModel} / ${commands.length} commands` : `${selectedSession.provider} / ${statusLabel(language, selectedSession.status)}`}</span>{isRunning ? <button type="button" className="button danger" onClick={() => void api.interrupt(selectedSession.id)}><Stop size={15} />{t("stop")}</button> : <button className="button primary" disabled={!composer.trim() || busy || warming}>{busy || warming ? <CircleNotch className="spin" /> : <Check />}{t("send")}</button>}</div>
                       </form>
                     </section>
                     <section className="result-dock">

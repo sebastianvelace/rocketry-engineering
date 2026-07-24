@@ -9,5 +9,6 @@ cd "$ROOT_DIR"
 .venv/bin/python -m unittest discover -s tests -v
 pnpm --dir desktop test
 pnpm --dir desktop build
+pnpm --dir desktop test:e2e
 cargo check --manifest-path desktop/src-tauri/Cargo.toml
 git diff --check

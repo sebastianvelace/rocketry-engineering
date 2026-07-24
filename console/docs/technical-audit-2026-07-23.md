@@ -113,3 +113,41 @@ The responsive check caught and fixed an always-expanded mobile sidebar.
    of only embedding it in result metadata.
 5. Add named acceptance profiles for rail speed, stability, pressure and flow
    gates so warnings remain traceable to a reviewed standard.
+
+## Desktop agent harness follow-up
+
+The later desktop audit added a second application boundary around the same
+engineering services. Its highest-severity finding was a Codex app-server
+schema drift: the installed 0.145.0 CLI accepts `workspace-write` in
+`thread/start` and `thread/resume`, while the adapter still sent
+`workspaceWrite`. That prevented every Codex session from connecting. The
+request preset is corrected and protected by an adapter regression test.
+
+Provider connection failures are now persisted, partial provider processes are
+closed, and the desktop displays an actionable retry notice. The browser suite
+uses Playwright with deterministic gateway responses; separate live acceptance
+turns verified the installed Claude Code and Codex subscription transports.
+
+### Prioritized remaining improvements
+
+1. **Bench observability:** an enumerated serial port is not proof that the
+   firmware is emitting the expected block. Expose bytes received, the last
+   parsed line, reset/handshake state and the expected `# BLOCK` marker. This is
+   the immediate priority because the attached ESP32 timed out during E2E.
+2. **Protocol compatibility:** generate or inspect the installed Codex
+   app-server schema during dependency upgrades. The targeted preset test
+   prevents the specific regression, but a small compatibility probe should
+   cover initialization, thread start, resume and approval response shapes.
+3. **Long-session rendering:** Markdown is memoized, but the conversation feed
+   is not virtualized. Add windowing once sessions routinely exceed a few
+   hundred messages or tool events.
+4. **Frontend boundaries:** `App.tsx` still owns transport lifecycle, session
+   state, composer behavior and layout. Extract session transport and
+   conversation hooks before adding more provider-specific controls.
+5. **Session management:** add rename, archive/delete and a clear indication
+   when a provider session is already active in another workstation process.
+6. **Release portability:** package the Python gateway as a Tauri sidecar and
+   add a migration/backup command for `.rocketry/gateway.db`.
+7. **Remote continuity:** conversation access from another computer still
+   needs an authenticated relay or synchronized transcript store; the local
+   gateway must not simply bind to the LAN.

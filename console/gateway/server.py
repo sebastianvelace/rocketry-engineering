@@ -21,6 +21,7 @@ from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from gateway.manager import SessionManager
+from gateway.providers.base import ProviderError
 from gateway.store import GatewayStore
 
 VERSION = "0.1.0"
@@ -142,6 +143,30 @@ def create_app(
         except Exception as exc:
             return error_response("provider_unavailable", str(exc), 503)
 
+    async def set_session_model(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        try:
+            payload = await request.json()
+            model = str(payload.get("model") or "").strip()
+            if not model:
+                raise ValueError("model is required.")
+            session = await session_manager.set_model(
+                request.path_params["session_id"],
+                model,
+            )
+            return JSONResponse({"ok": True, "session": gateway_store.serialize(session)})
+        except KeyError as exc:
+            return error_response("not_found", str(exc), 404)
+        except ValueError as exc:
+            return error_response("invalid_request", str(exc), 400)
+        except ProviderError as exc:
+            return error_response("provider_unavailable", str(exc), 503)
+        except RuntimeError as exc:
+            return error_response("session_busy", str(exc), 409)
+        except Exception as exc:
+            return error_response("provider_unavailable", str(exc), 503)
+
     async def list_events(request: Request):
         if not authorized(request):
             return error_response("unauthorized", "A valid gateway token is required.", 401)
@@ -177,8 +202,12 @@ def create_app(
             return error_response("not_found", str(exc), 404)
         except ValueError as exc:
             return error_response("invalid_request", str(exc), 400)
+        except ProviderError as exc:
+            return error_response("provider_unavailable", str(exc), 503)
         except RuntimeError as exc:
             return error_response("session_busy", str(exc), 409)
+        except Exception as exc:
+            return error_response("provider_unavailable", str(exc), 503)
 
     async def interrupt(request: Request):
         if not authorized(request):
@@ -547,6 +576,7 @@ def create_app(
         Route("/api/sessions", create_session, methods=["POST"]),
         Route("/api/sessions/{session_id:str}", get_session, methods=["GET"]),
         Route("/api/sessions/{session_id:str}/connect", connect_session, methods=["POST"]),
+        Route("/api/sessions/{session_id:str}/model", set_session_model, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/events", list_events, methods=["GET"]),
         Route("/api/sessions/{session_id:str}/messages", send_message, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/interrupt", interrupt, methods=["POST"]),

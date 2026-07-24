@@ -99,7 +99,25 @@ class SessionManager:
             self.adapters.pop(session_id, None)
         session = self.store.get_session(session_id)
         adapter = self._build_adapter(session)
-        provider_session_id = await adapter.start()
+        try:
+            provider_session_id = await adapter.start()
+            preferred_model = session.metadata.get("model")
+            if preferred_model and hasattr(adapter, "set_model"):
+                await adapter.set_model(str(preferred_model))
+        except Exception as exc:
+            self.store.update_session(session_id, status="failed")
+            event = self.store.append_event(
+                session_id,
+                type="error",
+                text="Provider connection failed",
+                data={"error": str(exc)},
+            )
+            await self._publish(event)
+            try:
+                await adapter.close()
+            except Exception:
+                pass
+            raise
         self.adapters[session_id] = adapter
         updated = self.store.update_session(
             session_id,
@@ -158,6 +176,28 @@ class SessionManager:
             if session.status in {"running", "waiting_approval", "interrupting"}:
                 return
             await self._ensure_adapter(session_id)
+
+    async def set_model(self, session_id: str, model: str) -> SessionRecord:
+        async with self._session_locks[session_id]:
+            session = self.store.get_session(session_id)
+            if session.provider != "claude":
+                raise ValueError("Model switching is currently available for Claude sessions.")
+            if session.status in {"running", "waiting_approval", "interrupting"}:
+                raise RuntimeError("The model cannot change during an active turn.")
+            adapter = await self._ensure_adapter(session_id)
+            await adapter.set_model(model)
+            updated = self.store.update_session(
+                session_id,
+                metadata={**session.metadata, "model": model},
+            )
+            event = self.store.append_event(
+                session_id,
+                type="session",
+                text="Model changed",
+                data={"model": model},
+            )
+            await self._publish(event)
+            return updated
 
     async def _handle_provider_event(
         self,
