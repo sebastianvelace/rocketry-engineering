@@ -73,12 +73,15 @@ export async function mockGateway(
   page: Page,
   sessionEvents: typeof events = events,
   sessionApprovals: Record<string, unknown>[] = [],
+  worktreeReviewBySessionId: Record<string, Record<string, unknown>> = {},
 ) {
   let selectedModel = "default";
   let sessionLoads = 0;
   let sessionDeleted = false;
   let lastResolvedApproval: Record<string, unknown> | null = null;
   const createdSessions: Record<string, unknown>[] = [];
+  const mergedSessionIds = new Set<string>();
+  const deletedSessionIds = new Set<string>();
   await page.routeWebSocket("ws://gateway.test/**", () => {});
   await page.route("http://gateway.test/**", async (route) => {
     const request = route.request();
@@ -97,7 +100,7 @@ export async function mockGateway(
         payload = {
           ok: true,
           sessions: [
-            ...createdSessions,
+            ...createdSessions.filter((session) => !deletedSessionIds.has(session.id as string)),
             ...(sessionDeleted ? [] : [{ ...baseSession, metadata: { model: selectedModel } }]),
           ],
         };
@@ -185,6 +188,53 @@ export async function mockGateway(
     } else if (path === "/api/sessions/session-1/model" && method === "POST") {
       selectedModel = String(request.postDataJSON().model);
       payload = { ok: true, session: { ...baseSession, metadata: { model: selectedModel } } };
+    } else if (path.match(/^\/api\/sessions\/[^/]+\/worktree\/merge$/) && method === "POST") {
+      const id = path.split("/")[3];
+      mergedSessionIds.add(id);
+      const review = worktreeReviewBySessionId[id] || {};
+      payload = { ok: true, merge: { base_branch: review.base_branch || "main", merge_result: "deadbeef" } };
+    } else if (path.match(/^\/api\/sessions\/[^/]+\/worktree$/) && method === "GET") {
+      const id = path.split("/")[3];
+      const review = worktreeReviewBySessionId[id];
+      const hasPending = Boolean(review) && !mergedSessionIds.has(id);
+      payload = {
+        ok: true,
+        review: {
+          branch: `workstation/${id}`,
+          base_branch: "main",
+          uncommitted_files: 0,
+          commits_ahead: 0,
+          diff: "",
+          ...review,
+          has_pending: hasPending,
+        },
+      };
+    } else if (path.match(/^\/api\/sessions\/[^/]+$/) && method === "DELETE") {
+      const id = path.split("/")[3];
+      const review = worktreeReviewBySessionId[id];
+      const forced = url.searchParams.get("force") === "true";
+      if (review && !mergedSessionIds.has(id) && !forced) {
+        status = 409;
+        payload = {
+          ok: false,
+          error: {
+            code: "worktree_has_pending_changes",
+            message: "Worktree has pending changes.",
+            details: {
+              status: {
+                branch: `workstation/${id}`,
+                base_branch: review.base_branch || "main",
+                uncommitted_files: review.uncommitted_files ?? 1,
+                commits_ahead: review.commits_ahead ?? 0,
+              },
+            },
+          },
+        };
+      } else {
+        deletedSessionIds.add(id);
+        if (id === "session-1") sessionDeleted = true;
+        payload = { ok: true, deleted_session_id: id };
+      }
     } else if (path.match(/^\/api\/sessions\/[^/]+\/connect$/)) {
       const id = path.split("/")[3];
       const created = createdSessions.find((session) => session.id === id);

@@ -771,7 +771,12 @@ button.live-badge:hover { color: var(--text); border-color: #3a4756; }
 .delete-session-dialog footer button { display: inline-flex; min-height: 37px; gap: 7px; padding: 0 14px; align-items: center; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); }
 .delete-session-dialog footer button.danger { border-color: #8f343a; color: #fff; background: #b52e36; }
 .delete-session-dialog footer button.danger:hover { background: #cc3740; }
+.delete-session-dialog footer button.primary { border-color: #d3373d; color: white; background: #d93d43; }
+.delete-session-dialog footer button.primary:hover { background: #e5494f; }
 .delete-session-dialog footer button:disabled { cursor: wait; opacity: .6; }
+.delete-session-dialog.with-review { width: min(640px, 100%); }
+.worktree-review-diff { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); }
+.worktree-review-diff .timeline-diff { max-height: none; margin: 0; padding: 10px 12px; }
 
 .spin { animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

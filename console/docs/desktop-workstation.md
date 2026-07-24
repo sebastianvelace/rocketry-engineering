@@ -368,21 +368,59 @@ follows the authenticated account's actual availability.
 
 By default every session shares the `rocketry-portfolio` repository root, which
 is fine for read-mostly or single-session work but means two sessions
-editing files at the same time can collide. The new-session dialog now has
-an opt-in "isolated workspace" toggle: `gateway/worktrees.py`'s
+editing files at the same time can collide. The new-session dialog has an
+opt-in "isolated workspace" toggle: `gateway/worktrees.py`'s
 `WorktreeManager` allocates a `git worktree` at
 `.rocketry/worktrees/<session_id>` on its own `workstation/<session_id>`
 branch, guarded by an in-process `asyncio.Lock` (the gateway is a single
 process, so no cross-process file lock is needed here — unlike the Rocketry
 MCP's serial/simulator locks). `SessionManager.create_session` allocates the
-worktree before the session record exists, and `delete_session` removes it
-(`git worktree remove --force` plus the branch) after the session and its
-provider process are gone. Removal refuses to touch anything outside
-`.rocketry/worktrees/` — it never reaches into the user's real working
-tree. The session footer shows the worktree branch instead of "full
-repository" when a session is isolated. Verified with real git repositories
-in `tests/test_worktrees.py` and an integration test in
-`tests/test_session_manager.py`, not mocked subprocess calls.
+worktree before the session record exists. Removal refuses to touch
+anything outside `.rocketry/worktrees/` — it never reaches into the user's
+real working tree. The session footer shows the worktree branch instead of
+"full repository" when a session is isolated.
+
+**Safe removal and a real merge-back path.** The first version of this
+always passed `--force` to `git worktree remove` and `-D` to `git branch
+delete` — bypassing git's own built-in protection (`git worktree remove`
+normally refuses on uncommitted/untracked changes; `git branch -d` normally
+refuses on unmerged commits) rather than relying on it. That meant deleting
+an isolated session could silently destroy real work with no way to see
+what happened or get it back. Fixed:
+
+- `WorktreeManager.remove(session_id, *, force=False)` now runs the plain,
+  non-force git commands by default, so an isolated worktree with real work
+  in it is never silently destroyed — deletion only proceeds when the
+  worktree is actually clean and merged, or the operator explicitly forces
+  it.
+- `SessionManager.delete_session(session_id, *, force=False)` checks
+  `WorktreeManager.status()` (uncommitted files, commits ahead of the
+  branch it forked from) *before* touching the adapter or the durable
+  store. An unsafe delete request without `force` changes nothing at all —
+  raises `WorktreeHasPendingChangesError` carrying the status, surfaced by
+  `DELETE /api/sessions/{id}` as a 409 with `details.status`.
+- New `GET /api/sessions/{id}/worktree` (status + a labeled diff — committed
+  changes since the branch diverged, plus uncommitted working-tree changes,
+  including untracked files that `git diff` alone can't see) and
+  `POST /api/sessions/{id}/worktree/merge` (commits any pending work on the
+  isolated branch, then `git merge --no-ff` into the branch it forked from
+  — refusing outright if the repository root itself has uncommitted changes
+  or is checked out on a different branch, so it never surprises the
+  operator's own working tree).
+- The desktop delete-conversation dialog fetches this review when opening
+  for an isolated session; a clean session behaves exactly as before, a
+  session with pending work shows the diff (reusing `DiffBlock` from the
+  activity timeline) with "Merge into `<base>` and delete" or "Discard and
+  delete" instead of a single undifferentiated "Delete."
+
+Verified with real git repositories in `tests/test_worktrees.py` (every
+worktree test shells out to the actual `git` binary — nothing here is
+mocked), an integration test in `tests/test_session_manager.py`, gateway
+route tests in `tests/test_gateway_server.py`, a mocked-gateway Playwright
+scenario for the dialog, and a manual run against this repository's own
+real, currently-dirty working tree confirming `remove()` and `merge()`
+correctly refuse rather than doing anything destructive or surprising —
+then cleaned up with an explicit force-discard, leaving no trace.
 
 ## Native engineering surfaces
 

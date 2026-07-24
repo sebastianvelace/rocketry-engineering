@@ -189,6 +189,35 @@ test("an isolated workspace toggle creates a session on its own worktree branch"
   await expect(page.locator(".workspace-scope")).toContainText("workstation/session-2");
 });
 
+test("deleting an isolated session with pending work shows a diff and offers merge or discard", async ({ page }) => {
+  await mockGateway(page, events, [], {
+    "session-2": {
+      base_branch: "main",
+      uncommitted_files: 1,
+      commits_ahead: 0,
+      diff: "# Uncommitted changes in the worktree\ndiff --git a/fix.py b/fix.py\n@@ -1 +1 @@\n-broken()\n+fixed()\n",
+    },
+  });
+  await page.goto("/");
+
+  await page.locator(".session-panel header button").click();
+  await page.getByLabel("Nombre de la tarea").fill("Isolated fix");
+  await page.getByText("Área de trabajo aislada").click();
+  await page.getByRole("button", { name: "Crear" }).click();
+  await expect(page.getByRole("heading", { name: "Isolated fix" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Borrar conversación: Isolated fix" }).click();
+  const dialog = page.getByRole("dialog", { name: "¿Borrar esta conversación?" });
+  await expect(dialog).toContainText("1");
+  await expect(dialog.locator(".diff-remove")).toContainText("broken()");
+  await expect(dialog.locator(".diff-add")).toContainText("fixed()");
+  await expect(dialog.getByRole("button", { name: /Fusionar en/ })).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Descartar y borrar" }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.locator(".session-row", { hasText: "Isolated fix" })).toHaveCount(0);
+});
+
 test("a Bench capture timeout shows what was actually received on the wire", async ({ page }) => {
   await mockGateway(page);
   await page.goto("/");

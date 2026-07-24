@@ -47,6 +47,9 @@ const copy = {
     deleteConversationTitle: "Delete this conversation?",
     deleteConversationBody: "Its messages, activity and pending approvals will be permanently removed. An active agent will be stopped.",
     delete: "Delete",
+    worktreeReviewLoading: "Checking the isolated worktree for uncommitted or unmerged work...",
+    mergeAndDelete: "Merge into",
+    discardAndDelete: "Discard and delete",
   },
   es: {
     sessions: "Sesiones",
@@ -94,6 +97,9 @@ const copy = {
     deleteConversationTitle: "¿Borrar esta conversación?",
     deleteConversationBody: "Sus mensajes, actividad y autorizaciones pendientes se eliminarán definitivamente. Si el agente está activo, se detendrá.",
     delete: "Borrar",
+    worktreeReviewLoading: "Revisando el worktree aislado por cambios sin commitear o sin fusionar...",
+    mergeAndDelete: "Fusionar en",
+    discardAndDelete: "Descartar y borrar",
   },
 } as const;
 

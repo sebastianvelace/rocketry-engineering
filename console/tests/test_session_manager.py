@@ -7,15 +7,20 @@ from pathlib import Path
 from gateway.manager import SessionManager
 from gateway.providers.base import ProviderApproval, ProviderEvent
 from gateway.store import GatewayStore
-from gateway.worktrees import WorktreeManager
+from gateway.worktrees import WorktreeHasPendingChangesError, WorktreeManager
 
 
 def init_git_repo(root: Path) -> None:
+    """Mirrors the real repo's .gitignore (.rocketry/, gateway.db) so a
+    merge's "is the repo root clean?" check sees the same thing production
+    does — without it, this fixture's own gateway.db and worktrees would
+    falsely look like the operator's uncommitted changes."""
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+    (root / ".gitignore").write_text(".rocketry/\ngateway.db\n")
     (root / "README.md").write_text("hello\n")
-    subprocess.run(["git", "add", "README.md"], cwd=root, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "initial"], cwd=root, check=True)
 
 
@@ -274,6 +279,71 @@ class SessionManagerTests(unittest.TestCase):
         self.assertNotEqual(worktree_path, self.root)
         self.assertTrue(session.metadata["isolated_workspace"])
         self.assertFalse(worktree_path.exists())
+
+    def test_delete_refuses_when_the_worktree_has_uncommitted_work(self):
+        async def exercise():
+            session = await self.isolated_manager.create_session(
+                provider="claude",
+                workspace=str(self.root),
+                isolated=True,
+            )
+            (Path(session.workspace) / "agent_edit.txt").write_text("work in progress\n")
+            await self.isolated_manager.delete_session(session.id)
+            return session
+
+        with self.assertRaises(WorktreeHasPendingChangesError) as raised:
+            asyncio.run(exercise())
+        self.assertEqual(raised.exception.status.uncommitted_files, 1)
+        # Nothing was actually deleted: the session and its worktree survive.
+        sessions = [item.id for item in self.store.list_sessions()]
+        self.assertEqual(len(sessions), 1)
+        session_id = sessions[0]
+        self.assertTrue(Path(self.store.get_session(session_id).workspace).exists())
+
+    def test_delete_with_force_discards_pending_worktree_changes(self):
+        async def exercise():
+            session = await self.isolated_manager.create_session(
+                provider="claude",
+                workspace=str(self.root),
+                isolated=True,
+            )
+            (Path(session.workspace) / "agent_edit.txt").write_text("discard me\n")
+            await self.isolated_manager.delete_session(session.id, force=True)
+            return session
+
+        session = asyncio.run(exercise())
+        with self.assertRaises(KeyError):
+            self.store.get_session(session.id)
+        self.assertFalse(Path(session.workspace).exists())
+
+    def test_review_and_merge_worktree_then_delete_cleanly(self):
+        async def exercise():
+            session = await self.isolated_manager.create_session(
+                provider="claude",
+                workspace=str(self.root),
+                isolated=True,
+            )
+            (Path(session.workspace) / "agent_edit.txt").write_text("feature work\n")
+
+            review = await self.isolated_manager.get_worktree_review(session.id)
+            self.assertTrue(review["has_pending"])
+            self.assertIn("agent_edit.txt", review["diff"])
+
+            await self.isolated_manager.merge_worktree(session.id)
+            notices = [
+                event.text
+                for event in self.store.list_events(session.id)
+                if event.type == "notice"
+            ]
+            # Now clean and merged: a non-force delete succeeds.
+            await self.isolated_manager.delete_session(session.id)
+            return session, notices
+
+        session, notices = asyncio.run(exercise())
+        with self.assertRaises(KeyError):
+            self.store.get_session(session.id)
+        self.assertTrue((self.root / "agent_edit.txt").exists())
+        self.assertTrue(any("Merged isolated session" in text for text in notices))
 
     def test_isolated_session_requires_a_configured_worktree_manager(self):
         async def exercise():

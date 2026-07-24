@@ -15,6 +15,7 @@ import type {
   UsageSnapshot,
   WiringGuide,
   OperationResult,
+  WorktreeReview,
 } from "./types";
 
 export class GatewayApiError extends Error {
@@ -78,10 +79,25 @@ export class GatewayApi {
     return payload.session;
   }
 
-  async deleteSession(sessionId: string): Promise<void> {
-    await this.request(`/api/sessions/${sessionId}`, {
+  async deleteSession(sessionId: string, force = false): Promise<void> {
+    await this.request(`/api/sessions/${sessionId}${force ? "?force=true" : ""}`, {
       method: "DELETE",
     });
+  }
+
+  async getWorktreeReview(sessionId: string): Promise<WorktreeReview> {
+    return (
+      await this.request<{ review: WorktreeReview }>(`/api/sessions/${sessionId}/worktree`)
+    ).review;
+  }
+
+  async mergeWorktree(sessionId: string): Promise<{ base_branch: string; merge_result: string }> {
+    return (
+      await this.request<{ merge: { base_branch: string; merge_result: string } }>(
+        `/api/sessions/${sessionId}/worktree/merge`,
+        { method: "POST" },
+      )
+    ).merge;
   }
 
   async connectSession(sessionId: string): Promise<Session> {

@@ -1,4 +1,5 @@
 import asyncio
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ import httpx
 from gateway.manager import SessionManager
 from gateway.server import GatewayConfig, create_app, error_response, websocket_credentials
 from gateway.store import GatewayStore
+from gateway.worktrees import WorktreeManager
 
 
 class FakeAdapter:
@@ -277,6 +279,119 @@ class GatewayServerTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"]["code"], "invalid_request")
+
+
+def init_git_repo(root: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+    (root / ".gitignore").write_text(".rocketry/\ngateway.db\n")
+    (root / "README.md").write_text("hello\n")
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "initial"], cwd=root, check=True)
+
+
+class WorktreeRouteTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        init_git_repo(self.root)
+        self.store = GatewayStore(self.root / "gateway.db")
+
+        def factory(**kwargs):
+            return FakeAdapter(**kwargs)
+
+        self.manager = SessionManager(
+            self.store,
+            allowed_workspaces=[self.root],
+            adapter_factory=factory,
+            worktrees=WorktreeManager(self.root),
+        )
+        self.config = GatewayConfig(token="test-token")
+        self.app = create_app(
+            self.config,
+            store=self.store,
+            manager=self.manager,
+            usage_service=FakeUsageService(),
+        )
+        self.headers = {"Authorization": "Bearer test-token"}
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    async def request(self, method, path, **kwargs):
+        transport = httpx.ASGITransport(app=self.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://gateway.test") as client:
+            return await client.request(method, path, **kwargs)
+
+    async def create_isolated_session(self):
+        response = await self.request(
+            "POST",
+            "/api/sessions",
+            headers=self.headers,
+            json={"provider": "codex", "isolated": True, "title": "Isolated route test"},
+        )
+        self.assertEqual(response.status_code, 201)
+        return response.json()["session"]
+
+    def test_delete_without_force_returns_409_with_status_details(self):
+        async def exercise():
+            session = await self.create_isolated_session()
+            (Path(session["workspace"]) / "edit.txt").write_text("pending work\n")
+            return await self.request(
+                "DELETE", f"/api/sessions/{session['id']}", headers=self.headers
+            )
+
+        response = asyncio.run(exercise())
+        self.assertEqual(response.status_code, 409)
+        body = response.json()
+        self.assertEqual(body["error"]["code"], "worktree_has_pending_changes")
+        self.assertEqual(body["error"]["details"]["status"]["uncommitted_files"], 1)
+
+    def test_delete_with_force_query_param_discards_pending_changes(self):
+        async def exercise():
+            session = await self.create_isolated_session()
+            (Path(session["workspace"]) / "edit.txt").write_text("discard me\n")
+            return await self.request(
+                "DELETE",
+                f"/api/sessions/{session['id']}?force=true",
+                headers=self.headers,
+            )
+
+        response = asyncio.run(exercise())
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+
+    def test_worktree_review_reports_diff_and_status(self):
+        async def exercise():
+            session = await self.create_isolated_session()
+            (Path(session["workspace"]) / "edit.txt").write_text("pending work\n")
+            return await self.request(
+                "GET", f"/api/sessions/{session['id']}/worktree", headers=self.headers
+            )
+
+        response = asyncio.run(exercise())
+        self.assertEqual(response.status_code, 200)
+        review = response.json()["review"]
+        self.assertTrue(review["has_pending"])
+        self.assertIn("edit.txt", review["diff"])
+
+    def test_worktree_merge_then_clean_delete_succeeds(self):
+        async def exercise():
+            session = await self.create_isolated_session()
+            (Path(session["workspace"]) / "edit.txt").write_text("feature\n")
+            merge_response = await self.request(
+                "POST", f"/api/sessions/{session['id']}/worktree/merge", headers=self.headers
+            )
+            delete_response = await self.request(
+                "DELETE", f"/api/sessions/{session['id']}", headers=self.headers
+            )
+            return merge_response, delete_response
+
+        merge_response, delete_response = asyncio.run(exercise())
+        self.assertEqual(merge_response.status_code, 200)
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertTrue((self.root / "edit.txt").exists())
 
 
 class ErrorResponseTests(unittest.TestCase):

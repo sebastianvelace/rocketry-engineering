@@ -8,6 +8,7 @@ import {
   Fire,
   FolderOpen,
   Gauge,
+  GitMerge,
   Plus,
   Pulse,
   Robot,
@@ -24,7 +25,7 @@ import {
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import { CSSProperties, FormEvent, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GatewayApi, connectGateway } from "./api";
-import { AskUserQuestionItem, AskUserQuestionPanel, buildTimeline, Timeline } from "./ActivityFeed";
+import { AskUserQuestionItem, AskUserQuestionPanel, buildTimeline, DiffBlock, Timeline, unifiedDiffToLines } from "./ActivityFeed";
 import { CopyKey, eventLabel, Language, statusLabel, translate } from "./i18n";
 import { RunPlot } from "./RunPlot";
 import type {
@@ -38,6 +39,7 @@ import type {
   RunRecord,
   RunSummary,
   Session,
+  WorktreeReview,
 } from "./types";
 
 type View = "agent" | "bench" | "wiring" | "motor" | "flight" | "history" | "usage";
@@ -112,6 +114,9 @@ export default function App() {
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
   const [deletingSession, setDeletingSession] = useState(false);
+  const [worktreeReview, setWorktreeReview] = useState<WorktreeReview | null>(null);
+  const [worktreeReviewLoading, setWorktreeReviewLoading] = useState(false);
+  const [mergingWorktree, setMergingWorktree] = useState(false);
   const [newProvider, setNewProvider] = useState<Provider>("codex");
   const [newTitle, setNewTitle] = useState("");
   const [newIsolated, setNewIsolated] = useState(false);
@@ -272,13 +277,25 @@ export default function App() {
     } finally { setBusy(false); }
   }
 
-  async function deleteConversation() {
+  function openDeleteDialog(session: Session) {
+    setSessionToDelete(session);
+    setWorktreeReview(null);
+    if (api && session.metadata?.isolated_workspace) {
+      setWorktreeReviewLoading(true);
+      void api.getWorktreeReview(session.id)
+        .then(setWorktreeReview)
+        .catch((error) => setConnectionError(error instanceof Error ? error.message : String(error)))
+        .finally(() => setWorktreeReviewLoading(false));
+    }
+  }
+
+  async function deleteConversation(force = false) {
     if (!api || !sessionToDelete || deletingSession) return;
     const deletedId = sessionToDelete.id;
     setDeletingSession(true);
     setConnectionError("");
     try {
-      await api.deleteSession(deletedId);
+      await api.deleteSession(deletedId, force);
       warmed.current.delete(deletedId);
       const remaining = sessions.filter((session) => session.id !== deletedId);
       setSessions(remaining);
@@ -288,10 +305,25 @@ export default function App() {
         setApprovals([]);
       }
       setSessionToDelete(null);
+      setWorktreeReview(null);
     } catch (error) {
       setConnectionError(error instanceof Error ? error.message : String(error));
     } finally {
       setDeletingSession(false);
+    }
+  }
+
+  async function mergeAndDeleteConversation() {
+    if (!api || !sessionToDelete || mergingWorktree) return;
+    setMergingWorktree(true);
+    setConnectionError("");
+    try {
+      await api.mergeWorktree(sessionToDelete.id);
+      await deleteConversation(false);
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMergingWorktree(false);
     }
   }
 
@@ -501,7 +533,7 @@ export default function App() {
                     className="session-delete"
                     aria-label={`${t("deleteConversation")}: ${session.title}`}
                     title={t("deleteConversation")}
-                    onClick={() => setSessionToDelete(session)}
+                    onClick={() => openDeleteDialog(session)}
                   >
                     <Trash size={14} />
                   </button>
@@ -615,11 +647,14 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onMouseDown={(event) => {
-              if (event.target === event.currentTarget && !deletingSession) setSessionToDelete(null);
+              if (event.target === event.currentTarget && !deletingSession && !mergingWorktree) {
+                setSessionToDelete(null);
+                setWorktreeReview(null);
+              }
             }}
           >
             <motion.section
-              className="delete-session-dialog"
+              className={`delete-session-dialog ${worktreeReview?.has_pending ? "with-review" : ""}`}
               role="dialog"
               aria-modal="true"
               aria-labelledby="delete-session-title"
@@ -629,13 +664,39 @@ export default function App() {
               <span>DELETE SESSION</span>
               <h2 id="delete-session-title">{t("deleteConversationTitle")}</h2>
               <strong>{sessionToDelete.title}</strong>
-              <p>{t("deleteConversationBody")}</p>
+              {worktreeReviewLoading && <p>{t("worktreeReviewLoading")}</p>}
+              {!worktreeReviewLoading && !worktreeReview?.has_pending && <p>{t("deleteConversationBody")}</p>}
+              {!worktreeReviewLoading && worktreeReview?.has_pending && (
+                <div className="worktree-review">
+                  <p>
+                    {language === "es"
+                      ? `Esta sesión tiene ${worktreeReview.uncommitted_files} archivo(s) sin commitear y ${worktreeReview.commits_ahead} commit(s) sin fusionar en ${worktreeReview.base_branch}. Borrarla sin fusionar destruye ese trabajo.`
+                      : `This session has ${worktreeReview.uncommitted_files} uncommitted file(s) and ${worktreeReview.commits_ahead} commit(s) not merged into ${worktreeReview.base_branch}. Deleting it without merging destroys that work.`}
+                  </p>
+                  <div className="worktree-review-diff">
+                    <DiffBlock lines={unifiedDiffToLines(worktreeReview.diff)} />
+                  </div>
+                </div>
+              )}
               <footer>
-                <button disabled={deletingSession} onClick={() => setSessionToDelete(null)}>{t("cancel")}</button>
-                <button className="danger" disabled={deletingSession} onClick={() => void deleteConversation()}>
-                  {deletingSession ? <CircleNotch className="spin" /> : <Trash />}
-                  {t("delete")}
-                </button>
+                <button disabled={deletingSession || mergingWorktree} onClick={() => { setSessionToDelete(null); setWorktreeReview(null); }}>{t("cancel")}</button>
+                {worktreeReview?.has_pending ? (
+                  <>
+                    <button className="danger" disabled={deletingSession || mergingWorktree} onClick={() => void deleteConversation(true)}>
+                      {deletingSession ? <CircleNotch className="spin" /> : <Trash />}
+                      {t("discardAndDelete")}
+                    </button>
+                    <button className="primary" disabled={deletingSession || mergingWorktree} onClick={() => void mergeAndDeleteConversation()}>
+                      {mergingWorktree ? <CircleNotch className="spin" /> : <GitMerge />}
+                      {t("mergeAndDelete")} {worktreeReview.base_branch}
+                    </button>
+                  </>
+                ) : (
+                  <button className="danger" disabled={deletingSession || worktreeReviewLoading} onClick={() => void deleteConversation(false)}>
+                    {deletingSession ? <CircleNotch className="spin" /> : <Trash />}
+                    {t("delete")}
+                  </button>
+                )}
               </footer>
             </motion.section>
           </motion.div>

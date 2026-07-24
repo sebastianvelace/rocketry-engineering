@@ -102,8 +102,9 @@ The desktop client provides:
 - a secondary raw event log for troubleshooting, once activity moved into
   the conversation itself; and
 - an opt-in isolated workspace per session, backed by its own git worktree
-  and branch, so two sessions editing code at the same time never collide;
-  and
+  and branch, so two sessions editing code at the same time never collide —
+  deleting a session with uncommitted or unmerged work shows a diff and
+  offers to merge it back instead of silently discarding it; and
 - a Bench capture timeout that reports what was actually seen on the wire
   (bytes, lines, last line, whether a block ever started) instead of a bare
   failure; and

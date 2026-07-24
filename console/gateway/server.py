@@ -24,7 +24,7 @@ from gateway.manager import SessionManager
 from gateway.providers.base import ProviderError
 from gateway.store import GatewayStore
 from gateway.usage import UsageService
-from gateway.worktrees import WorktreeManager
+from gateway.worktrees import WorktreeError, WorktreeHasPendingChangesError, WorktreeManager
 
 VERSION = "0.1.0"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -146,15 +146,59 @@ def create_app(
         if not authorized(request):
             return error_response("unauthorized", "A valid gateway token is required.", 401)
         session_id = request.path_params["session_id"]
+        force = request.query_params.get("force") == "true"
         try:
-            await session_manager.delete_session(session_id)
+            await session_manager.delete_session(session_id, force=force)
             return JSONResponse(
                 {"ok": True, "deleted_session_id": session_id},
+            )
+        except WorktreeHasPendingChangesError as exc:
+            status = exc.status
+            return error_response(
+                "worktree_has_pending_changes",
+                str(exc),
+                409,
+                details={
+                    "status": {
+                        "branch": status.branch,
+                        "base_branch": status.base_branch,
+                        "uncommitted_files": status.uncommitted_files,
+                        "commits_ahead": status.commits_ahead,
+                    }
+                },
             )
         except KeyError as exc:
             return error_response("not_found", str(exc), 404)
         except Exception as exc:
             return error_response("provider_error", str(exc), 503)
+
+    async def worktree_review(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        session_id = request.path_params["session_id"]
+        try:
+            review = await session_manager.get_worktree_review(session_id)
+            return JSONResponse({"ok": True, "review": review})
+        except KeyError as exc:
+            return error_response("not_found", str(exc), 404)
+        except ValueError as exc:
+            return error_response("invalid_request", str(exc), 400)
+        except WorktreeError as exc:
+            return error_response("worktree_error", str(exc), 503)
+
+    async def merge_worktree(request: Request):
+        if not authorized(request):
+            return error_response("unauthorized", "A valid gateway token is required.", 401)
+        session_id = request.path_params["session_id"]
+        try:
+            result = await session_manager.merge_worktree(session_id)
+            return JSONResponse({"ok": True, "merge": result})
+        except KeyError as exc:
+            return error_response("not_found", str(exc), 404)
+        except ValueError as exc:
+            return error_response("invalid_request", str(exc), 400)
+        except WorktreeError as exc:
+            return error_response("worktree_error", str(exc), 503)
 
     async def connect_session(request: Request):
         if not authorized(request):
@@ -649,6 +693,8 @@ def create_app(
         Route("/api/sessions/{session_id:str}/messages", send_message, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/interrupt", interrupt, methods=["POST"]),
         Route("/api/sessions/{session_id:str}/approvals", pending_approvals, methods=["GET"]),
+        Route("/api/sessions/{session_id:str}/worktree", worktree_review, methods=["GET"]),
+        Route("/api/sessions/{session_id:str}/worktree/merge", merge_worktree, methods=["POST"]),
         Route("/api/approvals/{approval_id:str}", resolve_approval, methods=["POST"]),
         Route("/api/status", engineering_status, methods=["GET"]),
         Route("/api/usage", provider_usage_snapshot, methods=["GET"]),

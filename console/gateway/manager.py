@@ -12,7 +12,7 @@ from gateway.models import EventRecord, Provider, SessionRecord
 from gateway.providers import ClaudeAdapter, CodexAdapter
 from gateway.providers.base import ProviderApproval, ProviderEvent
 from gateway.store import GatewayStore
-from gateway.worktrees import WorktreeManager
+from gateway.worktrees import WorktreeHasPendingChangesError, WorktreeManager
 
 AdapterFactory = Callable[..., Any]
 
@@ -62,9 +62,10 @@ class SessionManager:
             if self.worktrees is None:
                 raise ValueError("Isolated workspaces are not configured for this gateway.")
             session_id = str(uuid.uuid4())
-            resolved = await self.worktrees.create(session_id)
+            resolved, base_branch = await self.worktrees.create(session_id)
             metadata["isolated_workspace"] = True
             metadata["worktree_branch"] = self.worktrees.branch(session_id)
+            metadata["worktree_base_branch"] = base_branch
         else:
             resolved = self._validate_workspace(workspace)
         session = self.store.create_session(
@@ -244,10 +245,65 @@ class SessionManager:
                 return
             await self._ensure_adapter(session_id)
 
-    async def delete_session(self, session_id: str) -> None:
-        """Stop a live provider and remove all durable conversation data."""
+    def _require_worktree_metadata(self, session: SessionRecord) -> str:
+        if not session.metadata.get("isolated_workspace") or self.worktrees is None:
+            raise ValueError(f"Session {session.id} does not have an isolated workspace.")
+        base_branch = session.metadata.get("worktree_base_branch")
+        if not base_branch:
+            raise ValueError(f"Session {session.id} has no recorded worktree base branch.")
+        return str(base_branch)
+
+    async def get_worktree_review(self, session_id: str) -> dict[str, Any]:
+        session = self.store.get_session(session_id)
+        base_branch = self._require_worktree_metadata(session)
+        assert self.worktrees is not None
+        status = await self.worktrees.status(session_id, base_branch)
+        diff = await self.worktrees.diff(session_id, base_branch)
+        return {
+            "branch": status.branch,
+            "base_branch": status.base_branch,
+            "uncommitted_files": status.uncommitted_files,
+            "commits_ahead": status.commits_ahead,
+            "has_pending": status.has_pending,
+            "diff": diff,
+        }
+
+    async def merge_worktree(self, session_id: str) -> dict[str, Any]:
         async with self._session_locks[session_id]:
             session = self.store.get_session(session_id)
+            base_branch = self._require_worktree_metadata(session)
+            assert self.worktrees is not None
+            result = await self.worktrees.merge(session_id, base_branch)
+            event = self.store.append_event(
+                session_id,
+                type="notice",
+                text=f"Merged isolated session into {base_branch}",
+                data={"base_branch": base_branch, "merge_result": result},
+            )
+            await self._publish(event)
+            return {"base_branch": base_branch, "merge_result": result}
+
+    async def delete_session(self, session_id: str, *, force: bool = False) -> None:
+        """Stop a live provider and remove all durable conversation data.
+
+        For an isolated session, this checks the worktree's status *before*
+        touching the adapter or the durable store — if there's uncommitted
+        or unmerged work and the caller didn't force it, nothing is deleted
+        at all. That mirrors git's own "worktree remove"/"branch -d" safety
+        checks: an unsafe delete request changes nothing rather than
+        partially destroying state.
+        """
+        async with self._session_locks[session_id]:
+            session = self.store.get_session(session_id)
+            is_isolated = bool(session.metadata.get("isolated_workspace")) and self.worktrees is not None
+            if is_isolated and not force:
+                assert self.worktrees is not None
+                base_branch = session.metadata.get("worktree_base_branch")
+                if base_branch:
+                    status = await self.worktrees.status(session_id, str(base_branch))
+                    if status.has_pending:
+                        raise WorktreeHasPendingChangesError(status)
+
             adapter = self.adapters.pop(session_id, None)
             if adapter is not None:
                 try:
@@ -264,8 +320,9 @@ class SessionManager:
             self.store.delete_session(session_id)
             self._subscribers.pop(session_id, None)
 
-            if session.metadata.get("isolated_workspace") and self.worktrees is not None:
-                await self.worktrees.remove(session_id)
+            if is_isolated:
+                assert self.worktrees is not None
+                await self.worktrees.remove(session_id, force=force)
 
     async def set_model(self, session_id: str, model: str) -> SessionRecord:
         async with self._session_locks[session_id]:

@@ -202,3 +202,12 @@ export interface GatewayConnection {
   token: string;
   workspace: string;
 }
+
+export interface WorktreeReview {
+  branch: string;
+  base_branch: string;
+  uncommitted_files: number;
+  commits_ahead: number;
+  has_pending: boolean;
+  diff: string;
+}

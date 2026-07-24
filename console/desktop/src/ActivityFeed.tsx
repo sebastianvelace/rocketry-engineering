@@ -259,7 +259,7 @@ export function extractDiff(input: unknown): DiffLine[] | null {
   return null;
 }
 
-function DiffBlock({ lines }: { lines: DiffLine[] }) {
+export function DiffBlock({ lines }: { lines: DiffLine[] }) {
   return (
     <pre className="timeline-diff">
       {lines.map((line, index) => (
