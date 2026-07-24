@@ -372,6 +372,20 @@ There is no duplicate simulation implementation in React.
   a complete block. The application reported `capture_timeout` correctly; the
   firmware/serial trigger remains an open hardware acceptance item.
 
+### Visual regression snapshots
+
+`desktop/e2e/visual.e2e.ts` renders the populated agent workspace at 900,
+1280 and 1440 px with `reducedMotion: "reduce"` emulated (removing
+animation timing as a source of flakiness) and asserts pixel-level
+stability against baselines in `desktop/e2e/visual.e2e.ts-snapshots/`. The
+shared mock-gateway fixture used by `workstation.e2e.ts` was extracted into
+`desktop/e2e/gateway-fixture.ts` so both specs reuse it — Playwright
+disallows one test file importing another directly. Baselines are
+platform-tagged (`-linux.png`) and were generated on this workstation;
+regenerate them deliberately after an intentional layout change with
+`pnpm exec playwright test visual.e2e.ts --update-snapshots`, never to make
+a failure disappear without looking at the diff first.
+
 ## Security constraints
 
 - The gateway binds to `127.0.0.1` only.
@@ -419,8 +433,8 @@ distributed product. Status of the items originally tracked here:
    "Bench handshake/diagnostic view" above). Repeating capture acceptance
    with the firmware actively emitting a block needs a session with the
    ESP32 connected.
-5. still open — visual regression snapshots for 900, 1280 and 1440 pixel
-   widths.
+5. **Done** — visual regression snapshots for 900, 1280 and 1440 pixel
+   widths (see "Visual regression snapshots" above).
 6. **Out of scope** — packaging the Python gateway as a sidecar. This is a
    personal-use tool; openMotor and OpenRocket would remain external
    dependencies at fixed paths regardless of packaging, so a real installer

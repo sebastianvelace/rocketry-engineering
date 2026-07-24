@@ -146,7 +146,11 @@ cd desktop/src-tauri && cargo check
 
 The browser E2E suite uses the installed Google Chrome build and a deterministic
 mock gateway. It does not consume Claude or Codex quota. Live provider probes
-remain explicit opt-in checks.
+remain explicit opt-in checks. `desktop/e2e/visual.e2e.ts` additionally asserts
+pixel-level layout stability at 900, 1280 and 1440 px against baselines checked
+into `desktop/e2e/visual.e2e.ts-snapshots/`; regenerate them deliberately with
+`pnpm exec playwright test visual.e2e.ts --update-snapshots` after an
+intentional layout change, not to silence a failure.
 
 It compiles the Python sources, runs unit and Streamlit page smoke tests, then
 checks the Git diff for whitespace errors.
