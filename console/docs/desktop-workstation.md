@@ -222,7 +222,11 @@ every new message/payload shape, a frontend unit test
 (`desktop/src/App.test.ts`) asserting the merge order, and a mocked-gateway
 Playwright scenario (`desktop/e2e/workstation.e2e.ts`) asserting thinking,
 a tool call, a subagent and a plan update all render inline in the
-conversation. Not yet exercised against a live Claude or Codex turn.
+conversation. The Claude side of this — `thinking` and `tool_started`/
+`tool_completed` — was additionally confirmed against a real Claude turn
+(the same live check described below for `AskUserQuestion`). Claude
+subagent lifecycle events and Codex's `plan_updated` still haven't been
+exercised against a live turn.
 
 ### Structured `AskUserQuestion` (Claude)
 
@@ -251,14 +255,14 @@ Codex's app-server protocol (`CODEX_COMMANDS`, `normalize_codex`) has no
 equivalent method locally, so this is Claude-only for now — Codex keeps the
 existing generic approval flow.
 
-**Verification gap, stated plainly**: this is verified by adapter and E2E
-tests against the assumed schema, not against a real `AskUserQuestion` call.
-Before trusting it in daily use, trigger one for real and confirm the
-`input_data` shape and that `updated_input` is actually consumed as the
-tool's result rather than the CLI expecting a different interactive path —
-per this project's own measure-before-you-trust discipline, this is
-exactly the kind of assumption that needs a real measurement, not a second
-inference.
+**Verified against a real Claude turn** (not just the assumed schema): a
+live `AskUserQuestion` call was forced with a real Claude Code process, the
+raw `input_data` matched the assumed `{questions: [{question, header,
+options: [{label, description}], multiSelect}]}` shape exactly, and
+resolving the approval with `answers={"<question>": "F-class"}` produced a
+final assistant reply of exactly `"F-class"` — confirming `updated_input`
+is genuinely consumed as the tool's result rather than the CLI expecting a
+separate interactive path.
 
 ### Diff inspector
 
@@ -274,10 +278,15 @@ Running tool calls show a live elapsed-time counter, cleared once the
 paired `tool_completed` event lands (Phase 1's started/completed
 correlation makes this possible without new plumbing).
 
-The Codex `fileChange` field name (`diff` vs. `unifiedDiff` vs. `patch`) is
-still a guess — none of Codex's app-server protocol is vendored locally to
-confirm it, so this needs the same live check as `AskUserQuestion` above,
-against a real Codex file-edit turn.
+**Verified and corrected against a real Codex edit turn.** The original
+guess (a top-level `diff`/`unifiedDiff`/`patch` string on the item) was
+wrong. The real shape, confirmed against a live Codex process editing a
+scratch file: `{ type: "fileChange", changes: [{ path, kind, diff }] }` —
+one entry per touched file, `diff` a bare hunk (`@@ ... @@` plus `-`/`+`
+lines, no `+++`/`---` file headers). `extractDiff` in `ActivityFeed.tsx` now
+reads `input.changes[]`, prefixing each file's hunk with its path so a
+multi-file `fileChange` call reads as one card per touched file instead of
+one opaque blob.
 
 ### Bench handshake/diagnostic view
 

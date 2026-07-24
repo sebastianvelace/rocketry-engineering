@@ -213,6 +213,7 @@ function compact(value: unknown): string {
 
 export function unifiedDiffToLines(text: string): DiffLine[] {
   return text
+    .replace(/\n$/, "")
     .split("\n")
     .filter((line) => !line.startsWith("+++") && !line.startsWith("---") && !line.startsWith("@@"))
     .map((line) => {
@@ -229,6 +230,24 @@ export function extractDiff(input: unknown): DiffLine[] | null {
   const record = input as Record<string, unknown>;
   if (typeof record.old_string === "string" && typeof record.new_string === "string") {
     return lineDiff(record.old_string, record.new_string);
+  }
+  // Codex fileChange: { changes: [{ path, kind, diff }] }, one entry per
+  // touched file, `diff` a bare hunk ("@@ ... @@" + "-"/"+" lines, no
+  // "+++"/"---" file headers) — confirmed against a real Codex edit turn.
+  if (Array.isArray(record.changes)) {
+    const lines: DiffLine[] = [];
+    for (const change of record.changes) {
+      if (!change || typeof change !== "object") continue;
+      const entry = change as Record<string, unknown>;
+      if (typeof entry.path === "string") {
+        if (lines.length) lines.push({ kind: "context", text: "" });
+        lines.push({ kind: "context", text: entry.path });
+      }
+      if (typeof entry.diff === "string" && entry.diff.trim()) {
+        lines.push(...unifiedDiffToLines(entry.diff));
+      }
+    }
+    if (lines.length) return lines;
   }
   const unified = record.diff ?? record.unifiedDiff ?? record.patch;
   if (typeof unified === "string" && unified.trim()) {

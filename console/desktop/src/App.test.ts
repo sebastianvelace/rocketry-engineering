@@ -121,12 +121,23 @@ describe("tool call diff detection", () => {
     expect(diff).toEqual([{ kind: "add", text: "print(1)" }]);
   });
 
-  it("parses a Codex fileChange unified diff field", () => {
-    const diff = extractDiff({ type: "fileChange", diff: "--- a\n+++ b\n@@\n-old\n+new\n context" });
+  it("parses a Codex fileChange item's per-file changes array (confirmed against a real Codex edit turn)", () => {
+    const diff = extractDiff({
+      type: "fileChange",
+      id: "call_1",
+      changes: [
+        {
+          path: "/tmp/scratch.py",
+          kind: { type: "update", move_path: null },
+          diff: "@@ -1 +1 @@\n-value = 1\n+value = 2\n",
+        },
+      ],
+      status: "completed",
+    });
     expect(diff).toEqual([
-      { kind: "remove", text: "old" },
-      { kind: "add", text: "new" },
-      { kind: "context", text: "context" },
+      { kind: "context", text: "/tmp/scratch.py" },
+      { kind: "remove", text: "value = 1" },
+      { kind: "add", text: "value = 2" },
     ]);
   });
 
