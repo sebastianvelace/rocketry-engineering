@@ -234,7 +234,7 @@ test("a Bench capture timeout shows what was actually received on the wire", asy
 test("conversation deletion requires confirmation and clears the selected session", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Borrar conversación: Acceptance session" }).click();
+  await page.getByRole("button", { name: "Borrar conversación actual" }).click();
   const dialog = page.getByRole("dialog", { name: "¿Borrar esta conversación?" });
   await expect(dialog).toContainText("Acceptance session");
   await dialog.getByRole("button", { name: "Borrar" }).click();

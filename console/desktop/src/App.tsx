@@ -576,7 +576,19 @@ export default function App() {
                     <section className="conversation-pane">
                       <header className="pane-header">
                         <div><p>{selectedSession.provider.toUpperCase()} / {selectedSession.workspace.split("/").at(-1)}</p><h1>{selectedSession.title}</h1></div>
-                        <div className="agent-state"><span className={socketConnected ? "online" : ""} />{warming ? (language === "es" ? "Conectando" : "Connecting") : isRunning ? t("agentWorking") : t("agentReady")}</div>
+                        <div className="pane-header-actions">
+                          <div className="agent-state"><span className={socketConnected ? "online" : ""} />{warming ? (language === "es" ? "Conectando" : "Connecting") : isRunning ? t("agentWorking") : t("agentReady")}</div>
+                          <button
+                            className="delete-current-session"
+                            type="button"
+                            aria-label={t("deleteCurrentConversation")}
+                            title={t("deleteCurrentConversation")}
+                            onClick={() => openDeleteDialog(selectedSession)}
+                          >
+                            <Trash size={15} />
+                            <span>{t("delete")}</span>
+                          </button>
+                        </div>
                       </header>
                       <div className="message-feed">
                         {!timeline.length && <div className="agent-intro"><span>R/ AGENT HARNESS</span><h2>{t("noConversation")}</h2><p>{language === "es" ? "Puedes pedir una prueba en lenguaje natural o escribir / para usar un comando del proveedor." : "Ask for a test in natural language or type / to use a provider command."}</p></div>}
