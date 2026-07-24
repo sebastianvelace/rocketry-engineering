@@ -221,6 +221,33 @@ class ProviderNormalizationTests(unittest.TestCase):
         self.assertEqual(plan[0].data["plan"], [{"step": "Read config", "status": "completed"}])
         self.assertEqual(usage[0].type, "usage")
 
+    def test_codex_exposes_tool_progress_and_runtime_warnings(self):
+        progress = normalize_codex(
+            {
+                "method": "item/mcpToolCall/progress",
+                "params": {"itemId": "tool-1", "message": "Simulating candidate 3 of 8"},
+            }
+        )
+        warning = normalize_codex(
+            {
+                "method": "configWarning",
+                "params": {"summary": "Ignored unknown setting", "path": "/tmp/config.toml"},
+            }
+        )
+        rerouted = normalize_codex(
+            {
+                "method": "model/rerouted",
+                "params": {"fromModel": "gpt-a", "toModel": "gpt-b", "reason": "capacity"},
+            }
+        )
+
+        self.assertEqual(progress[0].type, "tool_progress")
+        self.assertEqual(progress[0].data["item_id"], "tool-1")
+        self.assertEqual(warning[0].type, "notice")
+        self.assertEqual(warning[0].text, "Ignored unknown setting")
+        self.assertIn("gpt-a", rerouted[0].text)
+        self.assertIn("gpt-b", rerouted[0].text)
+
     def test_codex_routes_native_approval_request(self):
         async def exercise():
             approvals = []
@@ -306,6 +333,69 @@ class ProviderNormalizationTests(unittest.TestCase):
                     },
                 }
             ],
+        )
+
+    def test_codex_request_user_input_uses_structured_questions_and_answers(self):
+        async def exercise():
+            approvals = []
+            sent = []
+
+            async def emit(event):
+                pass
+
+            async def approve(request):
+                approvals.append(request)
+
+            adapter = CodexAdapter(
+                workspace=Path("/tmp"),
+                event_sink=emit,
+                approval_sink=approve,
+            )
+
+            async def send(payload):
+                sent.append(payload)
+
+            adapter.process.send = send
+            await adapter._on_message(
+                {
+                    "id": "question-1",
+                    "method": "item/tool/requestUserInput",
+                    "params": {
+                        "threadId": "thread-1",
+                        "turnId": "turn-1",
+                        "itemId": "item-1",
+                        "autoResolutionMs": None,
+                        "questions": [
+                            {
+                                "id": "motor",
+                                "header": "Motor",
+                                "question": "Which motor?",
+                                "isOther": True,
+                                "isSecret": False,
+                                "options": [
+                                    {"label": "F-class", "description": "Lower impulse"},
+                                    {"label": "G-class", "description": "Higher impulse"},
+                                ],
+                            }
+                        ],
+                    },
+                }
+            )
+            await adapter.resolve_approval(
+                "question-1",
+                approved=True,
+                answers={"motor": "G-class"},
+            )
+            return approvals, sent
+
+        approvals, sent = asyncio.run(exercise())
+        self.assertEqual(approvals[0].action, "request_user_input")
+        self.assertEqual(approvals[0].details["kind"], "ask_user_question")
+        self.assertEqual(approvals[0].details["questions"][0]["id"], "motor")
+        self.assertTrue(approvals[0].details["questions"][0]["isOther"])
+        self.assertEqual(
+            sent,
+            [{"id": "question-1", "result": {"answers": {"motor": {"answers": ["G-class"]}}}}],
         )
 
     def test_claude_sdk_messages_use_same_event_contract(self):

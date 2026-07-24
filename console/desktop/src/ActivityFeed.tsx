@@ -159,6 +159,16 @@ export function buildTimeline(events: AgentEvent[]): TimelineItem[] {
         }
         break;
       }
+      case "tool_progress": {
+        const itemId = event.data.item_id ? String(event.data.item_id) : "";
+        const index = itemId ? toolIndex.get(itemId) : undefined;
+        if (index !== undefined && items[index].kind === "tool") {
+          const current = items[index] as Extract<TimelineItem, { kind: "tool" }>;
+          const separator = current.output ? "\n" : "";
+          items[index] = { ...current, output: `${current.output}${separator}${event.text}` };
+        }
+        break;
+      }
       case "subagent_started": {
         const taskId = String(event.data.task_id ?? "");
         items.push({ kind: "subagent", id: event.id, taskId, description: event.text, status: "running" });
@@ -340,9 +350,12 @@ export interface AskUserQuestionOption {
 }
 
 export interface AskUserQuestionItem {
+  id?: string;
   question: string;
   header?: string;
   multiSelect?: boolean;
+  isOther?: boolean;
+  isSecret?: boolean;
   options: AskUserQuestionOption[];
 }
 
@@ -358,47 +371,90 @@ export function AskUserQuestionPanel({
   onDeny: () => void;
 }) {
   const [selected, setSelected] = useState<Record<string, string[]>>({});
+  const [custom, setCustom] = useState<Record<string, string>>({});
 
-  function toggle(question: string, label: string, multiSelect: boolean) {
+  function toggle(questionKey: string, label: string, multiSelect: boolean) {
     setSelected((current) => {
-      const chosen = current[question] || [];
+      const chosen = current[questionKey] || [];
       if (multiSelect) {
         return {
           ...current,
-          [question]: chosen.includes(label) ? chosen.filter((value) => value !== label) : [...chosen, label],
+          [questionKey]: chosen.includes(label) ? chosen.filter((value) => value !== label) : [...chosen, label],
         };
       }
-      return { ...current, [question]: [label] };
+      return { ...current, [questionKey]: [label] };
     });
   }
 
-  const answered = questions.every((entry) => (selected[entry.question] || []).length > 0);
+  function answerFor(entry: AskUserQuestionItem) {
+    const questionKey = entry.id || entry.question;
+    const chosen = selected[questionKey] || [];
+    if (!entry.options.length || chosen.includes("__other__")) return (custom[questionKey] || "").trim();
+    return chosen.join(", ");
+  }
+
+  const answered = questions.every((entry) => Boolean(answerFor(entry)));
 
   return (
     <section className="approval-panel ask-user-question">
       <div><strong>{language === "es" ? "El agente necesita una respuesta" : "The agent needs an answer"}</strong></div>
-      {questions.map((entry) => (
-        <fieldset key={entry.question}>
+      {questions.map((entry) => {
+        const questionKey = entry.id || entry.question;
+        const chosen = selected[questionKey] || [];
+        return (
+        <fieldset key={questionKey}>
           <legend>{entry.header || entry.question}</legend>
           <p>{entry.question}</p>
           <div className="ask-user-question-options">
             {entry.options.map((option) => {
-              const checked = (selected[entry.question] || []).includes(option.label);
+              const checked = chosen.includes(option.label);
               return (
                 <label className={checked ? "active" : ""} key={option.label}>
                   <input
                     type={entry.multiSelect ? "checkbox" : "radio"}
-                    name={entry.question}
+                    name={questionKey}
                     checked={checked}
-                    onChange={() => toggle(entry.question, option.label, Boolean(entry.multiSelect))}
+                    onChange={() => toggle(questionKey, option.label, Boolean(entry.multiSelect))}
                   />
                   <span><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>
                 </label>
               );
             })}
+            {entry.isOther && entry.options.length > 0 && (
+              <div className={`ask-user-question-other ${chosen.includes("__other__") ? "active" : ""}`}>
+                <label>
+                  <input
+                    type="radio"
+                    name={questionKey}
+                    checked={chosen.includes("__other__")}
+                    onChange={() => toggle(questionKey, "__other__", false)}
+                  />
+                  <span><strong>{language === "es" ? "Otra respuesta" : "Other answer"}</strong></span>
+                </label>
+                <input
+                  aria-label={language === "es" ? "Especificar otra respuesta" : "Specify another answer"}
+                  type={entry.isSecret ? "password" : "text"}
+                  value={custom[questionKey] || ""}
+                  onFocus={() => toggle(questionKey, "__other__", false)}
+                  onChange={(event) => {
+                    toggle(questionKey, "__other__", false);
+                    setCustom((current) => ({ ...current, [questionKey]: event.target.value }));
+                  }}
+                />
+              </div>
+            )}
+            {!entry.options.length && (
+              <input
+                className="ask-user-question-freeform"
+                aria-label={entry.question}
+                type={entry.isSecret ? "password" : "text"}
+                value={custom[questionKey] || ""}
+                onChange={(event) => setCustom((current) => ({ ...current, [questionKey]: event.target.value }))}
+              />
+            )}
           </div>
         </fieldset>
-      ))}
+      )})}
       <div>
         <button onClick={onDeny}>{language === "es" ? "Cancelar" : "Cancel"}</button>
         <button
@@ -407,7 +463,7 @@ export function AskUserQuestionPanel({
           onClick={() =>
             onSubmit(
               Object.fromEntries(
-                questions.map((entry) => [entry.question, (selected[entry.question] || []).join(", ")]),
+                questions.map((entry) => [entry.id || entry.question, answerFor(entry)]),
               ),
             )
           }

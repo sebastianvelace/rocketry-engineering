@@ -163,11 +163,12 @@ existing `MessageContent` pattern) instead of shipped in the main chunk —
 none of them are needed for the default Agent view. Confirmed the
 `@phosphor-icons/react` barrel import was not the bloat source first
 (`sideEffects: false` in its `package.json`, so unused icons were already
-tree-shaken); the remaining ~490 KB main chunk is dominated by React,
-`motion/react` and uPlot (`RunPlot`, needed eagerly since the Agent view's
-result dock defaults to its "runs" tab). Main chunk: 522 KB → 492 KB
-minified; `EngineeringViews` (26 KB) and `UsageView` (6 KB) now load only
-when the operator first navigates there.
+tree-shaken); the remaining ~445 KB main chunk is dominated by React,
+`motion/react` and Markdown rendering. `RunPlot` and uPlot are now also
+lazy-loaded when a result is opened, with a shape-matched plot placeholder.
+Main chunk: 522 KB → 445 KB minified; `RunPlot` (57 KB),
+`EngineeringViews` (28 KB) and `UsageView` (6 KB) load only when their
+corresponding surface is needed.
 
 ## Visual system
 
@@ -261,7 +262,7 @@ provider turn**, not just the assumed schema:
   workstation.e2e.ts` now asserts the computed color on an `inProgress`
   step so this can't silently regress again.
 
-### Structured `AskUserQuestion` (Claude)
+### Structured operator questions (Claude and Codex)
 
 `AskUserQuestion` previously flowed through the generic tool-approval panel
 as raw JSON with only approve/deny — there was no way to actually pick an
@@ -284,9 +285,15 @@ accepts an optional `answers` object, merged into the permission result's
 (`ActivityFeed.tsx`'s `AskUserQuestionPanel`) renders an actual
 radio/checkbox picker per question instead of raw JSON.
 
-Codex's app-server protocol (`CODEX_COMMANDS`, `normalize_codex`) has no
-equivalent method locally, so this is Claude-only for now — Codex keeps the
-existing generic approval flow.
+The current Codex app-server does expose the native
+`item/tool/requestUserInput` server request. This was confirmed from
+TypeScript bindings generated directly by the installed CLI, rather than
+inferred from provider prose. The gateway opts into that experimental
+protocol capability, translates its question shape into the shared picker
+and responds with the required `{answers: {id: {answers: [...]}}}` payload.
+Codex question IDs, custom "other" answers, option-less free-form questions
+and secret inputs are preserved. Claude continues to use question text as
+its answer key because that is its native tool contract.
 
 **Verified against a real Claude turn** (not just the assumed schema): a
 live `AskUserQuestion` call was forced with a real Claude Code process, the
@@ -484,6 +491,20 @@ There is no duplicate simulation implementation in React.
 - `/dev/ttyUSB0` was enumerated, but the Bench E2E timed out without receiving
   a complete block. The application reported `capture_timeout` correctly; the
   firmware/serial trigger remains an open hardware acceptance item.
+- Follow-up on 2026-07-24 generated the protocol bindings from the installed
+  Codex 0.145.0 CLI and confirmed native `requestUserInput`. Unit, component
+  and browser E2E tests cover its ID-based options, custom answers and secret
+  free-form fields.
+- A table-driven manager test dispatches every Codex action advertised by the
+  workstation: model, compact, review, status, usage, rename, fork and clear.
+  Claude commands remain sourced from the live Agent SDK catalog and use its
+  native command submission path.
+- Fresh quota-consuming probes completed two real turns per provider. Codex
+  started and resumed one app-server thread; Claude kept a persistent
+  stream-json process alive between turns and resumed the same session.
+- The ESP32 was no longer present during the 2026-07-24 follow-up
+  (`find_ports()` returned an empty list), so no new physical capture claim
+  was added.
 
 ### Visual regression snapshots
 
@@ -598,10 +619,9 @@ distributed product. Status of the items originally tracked here:
 
 1. **Done** — automatic Git worktree allocation for concurrent modifying
    sessions (see "Optional isolated workspaces" above).
-2. **Done, Claude only** — structured answers for `AskUserQuestion` (see
-   "Structured `AskUserQuestion` (Claude)" above). Codex has no equivalent
-   method in its app-server protocol locally, so `requestUserInput` stays
-   unimplemented until one is confirmed to exist.
+2. **Done, both providers** — structured answers for Claude
+   `AskUserQuestion` and Codex `item/tool/requestUserInput` (see
+   "Structured operator questions" above).
 3. **Done** — diff inspector and per-operation elapsed time (see "Diff
    inspector" above).
 4. **Done, hardware re-test still open** — a Bench handshake/diagnostic view

@@ -264,6 +264,38 @@ test("AskUserQuestion renders a structured picker instead of raw JSON", async ({
   await expect(panel).not.toBeVisible();
 });
 
+test("Codex requestUserInput supports its native ids and custom answer field", async ({ page }) => {
+  const requestUserInputApproval = {
+    id: "approval-codex-1",
+    session_id: "session-1",
+    status: "pending",
+    action: "request_user_input",
+    details: {
+      kind: "ask_user_question",
+      questions: [
+        {
+          id: "motor",
+          question: "Which motor should the sweep target?",
+          header: "Motor",
+          multiSelect: false,
+          isOther: true,
+          isSecret: false,
+          options: [{ label: "F-class", description: "Lower impulse" }],
+        },
+      ],
+    },
+  };
+  await mockGateway(page, [events[0], events[1]], [requestUserInputApproval]);
+  mockGatewayController(page).session = { ...baseSession, provider: "codex" };
+  await page.goto("/");
+
+  const panel = page.locator(".ask-user-question");
+  await panel.getByLabel("Especificar otra respuesta").fill("G-class");
+  await panel.getByRole("button", { name: "Responder" }).click();
+
+  await expect(panel).not.toBeVisible();
+});
+
 test("an isolated workspace toggle creates a session on its own worktree branch", async ({ page }) => {
   await mockGateway(page);
   await page.goto("/");

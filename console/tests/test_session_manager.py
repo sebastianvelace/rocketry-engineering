@@ -43,6 +43,10 @@ class FakeAdapter:
         self.approvals = []
         self.guidance = []
         self.turn_id = None
+        self.compacted = False
+        self.reviewed = []
+        self.renamed = []
+        self.selected_model = None
 
     async def start(self):
         return self.provider_session_id
@@ -54,6 +58,23 @@ class FakeAdapter:
 
     async def steer(self, prompt):
         self.guidance.append(prompt)
+
+    async def compact(self):
+        self.compacted = True
+
+    async def review(self, instructions=""):
+        self.reviewed.append(instructions)
+        self.turn_id = "review-turn"
+        return self.turn_id
+
+    async def rename(self, name):
+        self.renamed.append(name)
+
+    async def fork(self):
+        return "forked-provider-session"
+
+    async def set_model(self, model):
+        self.selected_model = model
 
     async def interrupt(self):
         self.interrupted = True
@@ -116,6 +137,72 @@ class SessionManagerTests(unittest.TestCase):
         self.assertEqual(submitted.text, "Turn submitted")
         self.assertIn("Run tests", [event.text for event in events])
         self.assertEqual(queue.qsize(), 2)
+
+    def test_codex_command_surface_dispatches_every_advertised_native_action(self):
+        async def create(title):
+            return await self.manager.create_session(
+                provider="codex",
+                workspace=str(self.root),
+                title=title,
+            )
+
+        async def exercise():
+            status_session = await create("Status")
+            status = await self.manager.execute_command(status_session.id, "status")
+
+            rename_session = await create("Rename")
+            renamed = await self.manager.execute_command(rename_session.id, "rename", "New name")
+            rename_adapter = self.adapters[-1]
+
+            fork_session = await create("Fork")
+            forked = await self.manager.execute_command(fork_session.id, "fork", "Branch")
+
+            clear_session = await create("Clear")
+            cleared = await self.manager.execute_command(clear_session.id, "clear", "Fresh")
+
+            compact_session = await create("Compact")
+            compacted = await self.manager.execute_command(compact_session.id, "compact")
+            compact_adapter = self.adapters[-1]
+
+            review_session = await create("Review")
+            reviewed = await self.manager.execute_command(review_session.id, "review", "Check tests")
+            review_adapter = self.adapters[-1]
+
+            usage_session = await create("Usage")
+            usage = await self.manager.execute_command(usage_session.id, "usage")
+
+            model_session = await create("Model")
+            modeled = await self.manager.set_model(model_session.id, "gpt-test")
+            model_adapter = self.adapters[-1]
+
+            return {
+                "status": status,
+                "renamed": renamed,
+                "rename_adapter": rename_adapter,
+                "forked": forked,
+                "cleared": cleared,
+                "compacted": compacted,
+                "compact_adapter": compact_adapter,
+                "reviewed": reviewed,
+                "review_adapter": review_adapter,
+                "usage": usage,
+                "modeled": modeled,
+                "model_adapter": model_adapter,
+            }
+
+        result = asyncio.run(exercise())
+        self.assertEqual(result["status"]["action"], "event")
+        self.assertEqual(result["renamed"]["session"].title, "New name")
+        self.assertEqual(result["rename_adapter"].renamed, ["New name"])
+        self.assertEqual(result["forked"]["session"].provider_session_id, "forked-provider-session")
+        self.assertEqual(result["cleared"]["session"].title, "Fresh")
+        self.assertEqual(result["compacted"]["action"], "running")
+        self.assertTrue(result["compact_adapter"].compacted)
+        self.assertEqual(result["reviewed"]["action"], "running")
+        self.assertEqual(result["review_adapter"].reviewed, ["Check tests"])
+        self.assertEqual(result["usage"]["action"], "usage")
+        self.assertEqual(result["modeled"].metadata["model"], "gpt-test")
+        self.assertEqual(result["model_adapter"].selected_model, "gpt-test")
 
     def test_reconnect_falls_back_to_a_fresh_provider_session_when_resume_fails(self):
         """A stored provider_session_id can stop being resumable for reasons

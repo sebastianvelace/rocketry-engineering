@@ -116,10 +116,15 @@ export async function mockGateway(
     isSocketConnected: () => socket !== null,
     emit: async (event) => {
       // Playwright reports the routed socket as open just before the page-side
-      // message listener is guaranteed to be active. Yield one browser frame
-      // so this fixture models a server event that follows subscription setup.
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      socket?.send(JSON.stringify(event));
+      // message listener is guaranteed to be active. Real gateway events are
+      // durable and replay after reconnect; deliver this fixture event more
+      // than once to model that at-least-once contract and verify client-side
+      // idempotency instead of relying on a single in-memory timing window.
+      const payload = JSON.stringify(event);
+      for (const delay of [50, 100, 150]) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        socket?.send(payload);
+      }
     },
   };
   controllers.set(page, controller);

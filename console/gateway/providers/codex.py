@@ -32,6 +32,8 @@ def normalize_codex(payload: dict[str, Any]) -> list[ProviderEvent]:
         events.append(ProviderEvent("reasoning", str(params.get("delta") or ""), "assistant", raw=payload))
     elif method == "item/commandExecution/outputDelta":
         events.append(ProviderEvent("command_output", str(params.get("delta") or ""), data={"item_id": params.get("itemId")}, raw=payload))
+    elif method == "item/mcpToolCall/progress":
+        events.append(ProviderEvent("tool_progress", str(params.get("message") or ""), data={"item_id": params.get("itemId")}, raw=payload))
     elif method == "item/started":
         item_type = str(item.get("type") or "item")
         if item_type in {"commandExecution", "fileChange", "mcpToolCall", "dynamicToolCall"}:
@@ -54,6 +56,18 @@ def normalize_codex(payload: dict[str, Any]) -> list[ProviderEvent]:
         events.append(ProviderEvent("usage", method, data=params, raw=payload))
     elif method == "turn/plan/updated":
         events.append(ProviderEvent("plan_updated", method, data=params, raw=payload))
+    elif method in {"warning", "guardianWarning", "deprecationNotice", "configWarning"}:
+        text = params.get("message") or params.get("summary") or params.get("details") or method
+        events.append(ProviderEvent("notice", str(text), data=params, raw=payload))
+    elif method == "model/rerouted":
+        events.append(
+            ProviderEvent(
+                "notice",
+                f"Model rerouted from {params.get('fromModel', 'default')} to {params.get('toModel', 'fallback')}",
+                data=params,
+                raw=payload,
+            )
+        )
     elif method == "error":
         error = params.get("error") if isinstance(params.get("error"), dict) else params
         events.append(ProviderEvent("error", str(error.get("message") if isinstance(error, dict) else error), data=params, raw=payload))
@@ -106,13 +120,31 @@ class CodexAdapter:
             "item/commandExecution/requestApproval",
             "item/fileChange/requestApproval",
             "item/permissions/requestApproval",
+            "item/tool/requestUserInput",
         }:
-            details = payload.get("params") or {}
+            details = dict(payload.get("params") or {})
+            action = method
+            if method == "item/tool/requestUserInput":
+                details["kind"] = "ask_user_question"
+                details["questions"] = [
+                    {
+                        "id": question.get("id"),
+                        "header": question.get("header"),
+                        "question": question.get("question"),
+                        "options": question.get("options") or [],
+                        "multiSelect": False,
+                        "isOther": bool(question.get("isOther")),
+                        "isSecret": bool(question.get("isSecret")),
+                    }
+                    for question in details.get("questions") or []
+                    if isinstance(question, dict)
+                ]
+                action = "request_user_input"
             self._approval_requests[response_id] = (method, details)
             await self.approval_sink(
                 ProviderApproval(
                     request_id=response_id,
-                    action=method,
+                    action=action,
                     details=details,
                 )
             )
@@ -150,7 +182,10 @@ class CodexAdapter:
                     "title": "Rocketry Workstation",
                     "version": "0.1.0",
                 },
-                "capabilities": {"experimentalApi": False},
+                # requestUserInput is still marked experimental in the local
+                # generated protocol, but it is the native Codex mechanism
+                # for structured operator questions.
+                "capabilities": {"experimentalApi": True},
             },
         )
         await self.process.send({"method": "initialized", "params": {}})
@@ -323,7 +358,17 @@ class CodexAdapter:
         if request is None:
             raise ProviderError("Codex approval request is no longer active.")
         method, params = request
-        if method == "item/permissions/requestApproval":
+        if method == "item/tool/requestUserInput":
+            result = {
+                "answers": {
+                    str(question_id): {"answers": [str(answer)]}
+                    for question_id, answer in (answers or {}).items()
+                    if str(answer).strip()
+                }
+                if approved
+                else {}
+            }
+        elif method == "item/permissions/requestApproval":
             result = {
                 "permissions": params.get("permissions") if approved else {},
                 "scope": "session" if approved and for_session else "turn",
