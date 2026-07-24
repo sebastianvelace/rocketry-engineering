@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable
@@ -10,6 +11,7 @@ from gateway.models import EventRecord, Provider, SessionRecord
 from gateway.providers import ClaudeAdapter, CodexAdapter
 from gateway.providers.base import ProviderApproval, ProviderEvent
 from gateway.store import GatewayStore
+from gateway.worktrees import WorktreeManager
 
 AdapterFactory = Callable[..., Any]
 
@@ -22,11 +24,13 @@ class SessionManager:
         allowed_workspaces: list[Path],
         adapter_factory: AdapterFactory | None = None,
         queue_size: int = 512,
+        worktrees: WorktreeManager | None = None,
     ):
         self.store = store
         self.allowed_workspaces = [path.resolve() for path in allowed_workspaces]
         self.adapter_factory = adapter_factory
         self.queue_size = queue_size
+        self.worktrees = worktrees
         self.adapters: dict[str, Any] = {}
         self._session_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._subscribers: defaultdict[str, set[asyncio.Queue]] = defaultdict(set)
@@ -49,18 +53,31 @@ class SessionManager:
         provider: Provider,
         workspace: str,
         title: str = "New session",
+        isolated: bool = False,
     ) -> SessionRecord:
-        resolved = self._validate_workspace(workspace)
+        session_id: str | None = None
+        metadata: dict[str, Any] = {}
+        if isolated:
+            if self.worktrees is None:
+                raise ValueError("Isolated workspaces are not configured for this gateway.")
+            session_id = str(uuid.uuid4())
+            resolved = await self.worktrees.create(session_id)
+            metadata["isolated_workspace"] = True
+            metadata["worktree_branch"] = self.worktrees.branch(session_id)
+        else:
+            resolved = self._validate_workspace(workspace)
         session = self.store.create_session(
             provider=provider,
             workspace=str(resolved),
             title=title,
+            session_id=session_id,
+            metadata=metadata,
         )
         event = self.store.append_event(
             session.id,
             type="session",
             text="Session created",
-            data={"provider": provider},
+            data={"provider": provider, "isolated_workspace": isolated},
         )
         await self._publish(event)
         return session
@@ -181,7 +198,7 @@ class SessionManager:
     async def delete_session(self, session_id: str) -> None:
         """Stop a live provider and remove all durable conversation data."""
         async with self._session_locks[session_id]:
-            self.store.get_session(session_id)
+            session = self.store.get_session(session_id)
             adapter = self.adapters.pop(session_id, None)
             if adapter is not None:
                 try:
@@ -197,6 +214,9 @@ class SessionManager:
 
             self.store.delete_session(session_id)
             self._subscribers.pop(session_id, None)
+
+            if session.metadata.get("isolated_workspace") and self.worktrees is not None:
+                await self.worktrees.remove(session_id)
 
     async def set_model(self, session_id: str, model: str) -> SessionRecord:
         async with self._session_locks[session_id]:

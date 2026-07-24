@@ -51,13 +51,14 @@ export class GatewayApi {
     return (await this.request<{ sessions: Session[] }>("/api/sessions")).sessions;
   }
 
-  async createSession(provider: Provider, title: string): Promise<Session> {
+  async createSession(provider: Provider, title: string, isolated = false): Promise<Session> {
     const payload = await this.request<{ session: Session }>("/api/sessions", {
       method: "POST",
       body: JSON.stringify({
         provider,
         title,
         workspace: this.connection.workspace,
+        isolated,
       }),
     });
     return payload.session;

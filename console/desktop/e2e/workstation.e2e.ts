@@ -78,6 +78,7 @@ async function mockGateway(
   let sessionLoads = 0;
   let sessionDeleted = false;
   let lastResolvedApproval: Record<string, unknown> | null = null;
+  const createdSessions: Record<string, unknown>[] = [];
   await page.routeWebSocket("ws://gateway.test/**", () => {});
   await page.route("http://gateway.test/**", async (route) => {
     const request = route.request();
@@ -95,11 +96,27 @@ async function mockGateway(
       } else {
         payload = {
           ok: true,
-          sessions: sessionDeleted
-            ? []
-            : [{ ...baseSession, metadata: { model: selectedModel } }],
+          sessions: [
+            ...createdSessions,
+            ...(sessionDeleted ? [] : [{ ...baseSession, metadata: { model: selectedModel } }]),
+          ],
         };
       }
+    } else if (path === "/api/sessions" && method === "POST") {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      const id = `session-${createdSessions.length + 2}`;
+      const isolated = Boolean(body.isolated);
+      const session = {
+        ...baseSession,
+        id,
+        title: body.title || "New task",
+        provider: body.provider,
+        workspace: isolated ? `/workspace/rocketry-portfolio/.rocketry/worktrees/${id}` : baseSession.workspace,
+        metadata: isolated ? { isolated_workspace: true, worktree_branch: `workstation/${id}` } : {},
+      };
+      createdSessions.unshift(session);
+      payload = { ok: true, session };
+      status = 201;
     } else if (path === "/api/status") {
       payload = {
         ok: true,
@@ -168,6 +185,14 @@ async function mockGateway(
     } else if (path === "/api/sessions/session-1/model" && method === "POST") {
       selectedModel = String(request.postDataJSON().model);
       payload = { ok: true, session: { ...baseSession, metadata: { model: selectedModel } } };
+    } else if (path.match(/^\/api\/sessions\/[^/]+\/connect$/)) {
+      const id = path.split("/")[3];
+      const created = createdSessions.find((session) => session.id === id);
+      payload = { ok: true, session: created || { ...baseSession, metadata: { model: selectedModel } } };
+    } else if (path.match(/^\/api\/sessions\/[^/]+\/events$/)) {
+      payload = { ok: true, events: [] };
+    } else if (path.match(/^\/api\/sessions\/[^/]+\/approvals$/)) {
+      payload = { ok: true, approvals: [] };
     } else if (path === "/api/flight/config") {
       payload = {
         ok: true,
@@ -350,6 +375,20 @@ test("AskUserQuestion renders a structured picker instead of raw JSON", async ({
   await answerButton.click();
 
   await expect(panel).not.toBeVisible();
+});
+
+test("an isolated workspace toggle creates a session on its own worktree branch", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+
+  await page.locator(".session-panel header button").click();
+  await page.getByLabel("Nombre de la tarea").fill("Isolated fix");
+  await page.getByText("Área de trabajo aislada").click();
+  await page.getByRole("button", { name: "Crear" }).click();
+
+  await expect(page.getByRole("heading", { name: "Isolated fix" })).toBeVisible();
+  await expect(page.locator(".workspace-scope")).toContainText("worktree aislado");
+  await expect(page.locator(".workspace-scope")).toContainText("workstation/session-2");
 });
 
 test("conversation deletion requires confirmation and clears the selected session", async ({ page }) => {

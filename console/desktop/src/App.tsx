@@ -107,6 +107,7 @@ export default function App() {
   const [deletingSession, setDeletingSession] = useState(false);
   const [newProvider, setNewProvider] = useState<Provider>("codex");
   const [newTitle, setNewTitle] = useState("");
+  const [newIsolated, setNewIsolated] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [warming, setWarming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -254,12 +255,13 @@ export default function App() {
     if (!api) return;
     setBusy(true);
     try {
-      const session = await api.createSession(newProvider, newTitle.trim() || t("newTask"));
+      const session = await api.createSession(newProvider, newTitle.trim() || t("newTask"), newIsolated);
       setSessions((current) => [session, ...current]);
       setSelectedId(session.id);
       setView("agent");
       setNewTaskOpen(false);
       setNewTitle("");
+      setNewIsolated(false);
     } finally { setBusy(false); }
   }
 
@@ -506,7 +508,11 @@ export default function App() {
                   <FolderOpen size={14} />
                   <span>
                     <strong>{selectedSession.workspace.split("/").at(-1)}</strong>
-                    <small>{language === "es" ? "repositorio completo" : "full repository"}</small>
+                    <small>
+                      {selectedSession.metadata?.isolated_workspace
+                        ? `${String(selectedSession.metadata?.worktree_branch ?? "")} · ${t("isolatedWorkspaceLabel")}`
+                        : (language === "es" ? "repositorio completo" : "full repository")}
+                    </small>
                   </span>
                 </div>
               )}
@@ -593,7 +599,7 @@ export default function App() {
         </main>
       </div>
 
-      <AnimatePresence>{newTaskOpen && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) setNewTaskOpen(false); }}><motion.form className="new-task-dialog" initial={reducedMotion ? false : { opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} onSubmit={createTask}><header><div><span>NEW SESSION</span><h2>{t("chooseProvider")}</h2></div><button type="button" onClick={() => setNewTaskOpen(false)}><X /></button></header><div className="provider-choice">{(["codex", "claude"] as Provider[]).map((provider) => <button type="button" className={newProvider === provider ? "active" : ""} onClick={() => setNewProvider(provider)} key={provider}>{provider === "codex" ? <Code /> : <Robot />}<strong>{provider === "codex" ? "Codex" : "Claude Code"}</strong><span>{provider === "codex" ? t("codexDescription") : t("claudeDescription")}</span></button>)}</div><label>{t("taskTitle")}<input autoFocus value={newTitle} onChange={(event) => setNewTitle(event.target.value)} /></label><footer><button type="button" onClick={() => setNewTaskOpen(false)}>{t("cancel")}</button><button className="primary" disabled={busy}>{busy ? <CircleNotch className="spin" /> : <Plus />}{t("create")}</button></footer></motion.form></motion.div>}</AnimatePresence>
+      <AnimatePresence>{newTaskOpen && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) setNewTaskOpen(false); }}><motion.form className="new-task-dialog" initial={reducedMotion ? false : { opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} onSubmit={createTask}><header><div><span>NEW SESSION</span><h2>{t("chooseProvider")}</h2></div><button type="button" onClick={() => setNewTaskOpen(false)}><X /></button></header><div className="provider-choice">{(["codex", "claude"] as Provider[]).map((provider) => <button type="button" className={newProvider === provider ? "active" : ""} onClick={() => setNewProvider(provider)} key={provider}>{provider === "codex" ? <Code /> : <Robot />}<strong>{provider === "codex" ? "Codex" : "Claude Code"}</strong><span>{provider === "codex" ? t("codexDescription") : t("claudeDescription")}</span></button>)}</div><label>{t("taskTitle")}<input autoFocus value={newTitle} onChange={(event) => setNewTitle(event.target.value)} /></label><label className="isolated-toggle"><input type="checkbox" checked={newIsolated} onChange={(event) => setNewIsolated(event.target.checked)} /><span><strong>{t("isolatedWorkspace")}</strong><small>{t("isolatedWorkspaceHint")}</small></span></label><footer><button type="button" onClick={() => setNewTaskOpen(false)}>{t("cancel")}</button><button className="primary" disabled={busy}>{busy ? <CircleNotch className="spin" /> : <Plus />}{t("create")}</button></footer></motion.form></motion.div>}</AnimatePresence>
       <AnimatePresence>
         {sessionToDelete && (
           <motion.div

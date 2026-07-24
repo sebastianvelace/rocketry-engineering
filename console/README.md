@@ -100,7 +100,9 @@ The desktop client provides:
   produced them, the same narrative a terminal session shows, instead of a
   separate activity tab; and
 - a secondary raw event log for troubleshooting, once activity moved into
-  the conversation itself.
+  the conversation itself; and
+- an opt-in isolated workspace per session, backed by its own git worktree
+  and branch, so two sessions editing code at the same time never collide.
 
 Claude is intentionally started with the Rocketry MCP only. Built-in Claude
 Code tools and project commands remain available, while unrelated account

@@ -24,6 +24,7 @@ from gateway.manager import SessionManager
 from gateway.providers.base import ProviderError
 from gateway.store import GatewayStore
 from gateway.usage import UsageService
+from gateway.worktrees import WorktreeManager
 
 VERSION = "0.1.0"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -121,6 +122,7 @@ def create_app(
                 provider=payload.get("provider"),
                 workspace=payload.get("workspace") or str(REPOSITORY_ROOT),
                 title=payload.get("title") or "New session",
+                isolated=bool(payload.get("isolated", False)),
             )
             return JSONResponse(
                 {"ok": True, "session": gateway_store.serialize(session)},
@@ -695,7 +697,11 @@ def main() -> None:
         flush=True,
     )
     store = GatewayStore(Path(database_path)) if database_path else GatewayStore()
-    manager = SessionManager(store, allowed_workspaces=[REPOSITORY_ROOT])
+    manager = SessionManager(
+        store,
+        allowed_workspaces=[REPOSITORY_ROOT],
+        worktrees=WorktreeManager(REPOSITORY_ROOT),
+    )
     uvicorn.run(
         create_app(config, store=store, manager=manager),
         host=config.host,

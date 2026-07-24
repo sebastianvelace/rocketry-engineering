@@ -1,4 +1,5 @@
 import asyncio
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +7,16 @@ from pathlib import Path
 from gateway.manager import SessionManager
 from gateway.providers.base import ProviderApproval, ProviderEvent
 from gateway.store import GatewayStore
+from gateway.worktrees import WorktreeManager
+
+
+def init_git_repo(root: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+    (root / "README.md").write_text("hello\n")
+    subprocess.run(["git", "add", "README.md"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "initial"], cwd=root, check=True)
 
 
 class FakeAdapter:
@@ -47,6 +58,7 @@ class SessionManagerTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
+        init_git_repo(self.root)
         self.store = GatewayStore(self.root / "gateway.db")
         self.adapters = []
 
@@ -60,6 +72,13 @@ class SessionManagerTests(unittest.TestCase):
             allowed_workspaces=[self.root],
             adapter_factory=factory,
             queue_size=2,
+        )
+        self.isolated_manager = SessionManager(
+            self.store,
+            allowed_workspaces=[self.root],
+            adapter_factory=factory,
+            queue_size=2,
+            worktrees=WorktreeManager(self.root),
         )
 
     def tearDown(self):
@@ -182,6 +201,35 @@ class SessionManagerTests(unittest.TestCase):
         self.assertNotIn(approval_id, self.manager._provider_approvals)
         with self.assertRaises(KeyError):
             self.store.get_session(session_id)
+
+    def test_isolated_session_gets_its_own_worktree_and_it_is_removed_on_delete(self):
+        async def exercise():
+            session = await self.isolated_manager.create_session(
+                provider="claude",
+                workspace=str(self.root),
+                isolated=True,
+            )
+            worktree_path = Path(session.workspace)
+            worktree_exists_after_create = worktree_path.is_dir()
+            await self.isolated_manager.delete_session(session.id)
+            return session, worktree_path, worktree_exists_after_create
+
+        session, worktree_path, worktree_exists_after_create = asyncio.run(exercise())
+        self.assertTrue(worktree_exists_after_create)
+        self.assertNotEqual(worktree_path, self.root)
+        self.assertTrue(session.metadata["isolated_workspace"])
+        self.assertFalse(worktree_path.exists())
+
+    def test_isolated_session_requires_a_configured_worktree_manager(self):
+        async def exercise():
+            await self.manager.create_session(
+                provider="claude",
+                workspace=str(self.root),
+                isolated=True,
+            )
+
+        with self.assertRaisesRegex(ValueError, "not configured"):
+            asyncio.run(exercise())
 
     def test_workspace_must_be_inside_allowed_root(self):
         async def exercise():

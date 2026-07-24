@@ -266,6 +266,26 @@ that choice before accepting the next turn. Model options are never hard-coded
 in React; they come from the installed provider process, so the interface
 follows the authenticated account's actual availability.
 
+### Optional isolated workspaces
+
+By default every session shares the `rocketry-portfolio` repository root, which
+is fine for read-mostly or single-session work but means two sessions
+editing files at the same time can collide. The new-session dialog now has
+an opt-in "isolated workspace" toggle: `gateway/worktrees.py`'s
+`WorktreeManager` allocates a `git worktree` at
+`.rocketry/worktrees/<session_id>` on its own `workstation/<session_id>`
+branch, guarded by an in-process `asyncio.Lock` (the gateway is a single
+process, so no cross-process file lock is needed here — unlike the Rocketry
+MCP's serial/simulator locks). `SessionManager.create_session` allocates the
+worktree before the session record exists, and `delete_session` removes it
+(`git worktree remove --force` plus the branch) after the session and its
+provider process are gone. Removal refuses to touch anything outside
+`.rocketry/worktrees/` — it never reaches into the user's real working
+tree. The session footer shows the worktree branch instead of "full
+repository" when a session is isolated. Verified with real git repositories
+in `tests/test_worktrees.py` and an integration test in
+`tests/test_session_manager.py`, not mocked subprocess calls.
+
 ## Native engineering surfaces
 
 The desktop client now calls the shared service boundary through authenticated
@@ -357,27 +377,29 @@ There is no duplicate simulation implementation in React.
 ## Remaining release work
 
 The current application is a verified local developer build, not a portable
-installer. Before calling it a first packaged release:
+installer, and this is intentionally a personal-use tool rather than a
+distributed product. Status of the items originally tracked here:
 
-1. add automatic Git worktree allocation for concurrent modifying sessions;
-2. add structured answers for Claude `AskUserQuestion` and Codex
-   `requestUserInput`;
-3. add a diff inspector and per-operation progress detail;
-4. add a Bench handshake/diagnostic view (bytes received, last protocol line,
-   expected block markers) and repeat capture acceptance with the firmware
-   actively emitting a block;
-5. add visual regression snapshots for 900, 1280 and 1440 pixel widths;
-6. package the Python gateway as a sidecar instead of depending on the
-   repository `.venv`; and
-7. choose a remote-session strategy.
-
-Remote access is deliberately not enabled by binding the gateway to the LAN.
-For a second computer, the safe options are:
-
-- Tailscale plus an authenticated HTTPS relay to this gateway while the
-  engineering machine remains the execution host; or
-- a shared transcript/session store for conversation-only continuity.
-
-The second option matches the stated need to keep the Claude conversation
-available without remotely controlling the ESP32. It should be implemented
-after choosing the storage account and retention policy.
+1. **Done** — automatic Git worktree allocation for concurrent modifying
+   sessions (see "Optional isolated workspaces" above).
+2. **Done, Claude only** — structured answers for `AskUserQuestion` (see
+   "Structured `AskUserQuestion` (Claude)" above). Codex has no equivalent
+   method in its app-server protocol locally, so `requestUserInput` stays
+   unimplemented until one is confirmed to exist.
+3. **Done** — diff inspector and per-operation elapsed time (see "Diff
+   inspector" above).
+4. still open — a Bench handshake/diagnostic view (bytes received, last
+   protocol line, expected block markers) and repeat capture acceptance
+   with the firmware actively emitting a block;
+5. still open — visual regression snapshots for 900, 1280 and 1440 pixel
+   widths.
+6. **Out of scope** — packaging the Python gateway as a sidecar. This is a
+   personal-use tool; openMotor and OpenRocket would remain external
+   dependencies at fixed paths regardless of packaging, so a real installer
+   was decided against.
+7. **Deferred** — a remote-session strategy. Remote access is deliberately
+   not enabled by binding the gateway to the LAN. If revisited, the two
+   options considered were Tailscale plus an authenticated HTTPS relay
+   (engineering machine stays the execution host), or a shared
+   transcript/session store for conversation-only continuity. Neither is
+   built; this stays a documented option, not a plan.
