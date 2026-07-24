@@ -1,4 +1,4 @@
-import { CaretDown, CaretRight, CheckSquare, Sparkle, Terminal, UsersThree, WarningCircle } from "@phosphor-icons/react";
+import { CaretDown, CaretRight, CheckSquare, Info, Sparkle, Terminal, UsersThree, WarningCircle } from "@phosphor-icons/react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import type { AgentEvent } from "./types";
 import { Language } from "./i18n";
@@ -32,7 +32,8 @@ export type TimelineItem =
       summary?: string;
     }
   | { kind: "plan"; id: string; steps: Array<{ label: string; status?: string }> }
-  | { kind: "error"; id: string; text: string };
+  | { kind: "error"; id: string; text: string }
+  | { kind: "notice"; id: string; text: string };
 
 function toolLabel(data: Record<string, unknown>): { id: string; name: string; input: unknown } {
   const tool = data.tool as Record<string, unknown> | undefined;
@@ -191,6 +192,9 @@ export function buildTimeline(events: AgentEvent[]): TimelineItem[] {
         break;
       case "error":
         items.push({ kind: "error", id: event.id, text: event.text });
+        break;
+      case "notice":
+        items.push({ kind: "notice", id: event.id, text: event.text });
         break;
       default:
         break;
@@ -433,6 +437,13 @@ export function Timeline({ items, provider, language }: { items: TimelineItem[];
             return (
               <article className="timeline-error" key={item.id}>
                 <WarningCircle size={14} />
+                <p>{item.text}</p>
+              </article>
+            );
+          case "notice":
+            return (
+              <article className="timeline-notice" key={item.id}>
+                <Info size={14} />
                 <p>{item.text}</p>
               </article>
             );

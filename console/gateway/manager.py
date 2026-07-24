@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import uuid
 from collections import defaultdict
 from pathlib import Path
@@ -106,6 +107,66 @@ class SessionManager:
             ),
         )
 
+    async def _fail_connection(self, session_id: str, adapter: Any, exc: Exception) -> None:
+        self.store.update_session(session_id, status="failed")
+        event = self.store.append_event(
+            session_id,
+            type="error",
+            text="Provider connection failed",
+            data={"error": str(exc)},
+        )
+        await self._publish(event)
+        try:
+            await adapter.close()
+        except Exception:
+            pass
+
+    async def _start_with_resume_fallback(self, session_id: str, session: SessionRecord):
+        """Start the adapter, falling back to a fresh provider session if a
+        resume fails.
+
+        A stored provider_session_id can stop being resumable for reasons
+        outside this gateway's knowledge (the provider prunes or clears its
+        own local session state). Without this fallback, that permanently
+        bricks the conversation: every reconnect attempt repeats the same
+        failure. The durable event history here is unaffected either way,
+        so falling back to a new provider session keeps the conversation
+        usable instead of leaving it stuck.
+        """
+        adapter = self._build_adapter(session)
+        if not session.provider_session_id:
+            try:
+                provider_session_id = await adapter.start()
+            except Exception as exc:
+                await self._fail_connection(session_id, adapter, exc)
+                raise
+            return adapter, provider_session_id
+
+        try:
+            provider_session_id = await adapter.start()
+            return adapter, provider_session_id
+        except Exception as exc:
+            try:
+                await adapter.close()
+            except Exception:
+                pass
+            event = self.store.append_event(
+                session_id,
+                type="notice",
+                text="Provider session could not be resumed; starting a new one",
+                data={"error": str(exc)},
+            )
+            await self._publish(event)
+
+        fresh_session = dataclasses.replace(session, provider_session_id=None)
+        adapter = self._build_adapter(fresh_session)
+        try:
+            provider_session_id = await adapter.start()
+        except Exception as exc:
+            await self._fail_connection(session_id, adapter, exc)
+            raise
+        return adapter, provider_session_id
+
     async def _ensure_adapter(self, session_id: str):
         adapter = self.adapters.get(session_id)
         if adapter is not None:
@@ -115,25 +176,13 @@ class SessionManager:
                 return adapter
             self.adapters.pop(session_id, None)
         session = self.store.get_session(session_id)
-        adapter = self._build_adapter(session)
+        adapter, provider_session_id = await self._start_with_resume_fallback(session_id, session)
         try:
-            provider_session_id = await adapter.start()
             preferred_model = session.metadata.get("model")
             if preferred_model and hasattr(adapter, "set_model"):
                 await adapter.set_model(str(preferred_model))
         except Exception as exc:
-            self.store.update_session(session_id, status="failed")
-            event = self.store.append_event(
-                session_id,
-                type="error",
-                text="Provider connection failed",
-                data={"error": str(exc)},
-            )
-            await self._publish(event)
-            try:
-                await adapter.close()
-            except Exception:
-                pass
+            await self._fail_connection(session_id, adapter, exc)
             raise
         self.adapters[session_id] = adapter
         updated = self.store.update_session(

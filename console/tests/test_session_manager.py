@@ -106,6 +106,61 @@ class SessionManagerTests(unittest.TestCase):
         self.assertIn("Run tests", [event.text for event in events])
         self.assertEqual(queue.qsize(), 2)
 
+    def test_reconnect_falls_back_to_a_fresh_provider_session_when_resume_fails(self):
+        """A stored provider_session_id can stop being resumable for reasons
+        outside this gateway's knowledge (the provider prunes or clears its
+        own local session state, observed for real against a live Claude
+        Code CLI: "No conversation found with session ID: ..."). Without a
+        fallback, every reconnect attempt repeats the same failure forever
+        and the conversation is permanently stuck."""
+
+        class FlakyResumeAdapter(FakeAdapter):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.resume_attempted = kwargs.get("provider_session_id") is not None
+
+            async def start(self):
+                if self.resume_attempted:
+                    raise RuntimeError("No conversation found with session ID: stale-session")
+                self.provider_session_id = "fresh-session"
+                return self.provider_session_id
+
+        created_adapters = []
+
+        def factory(**kwargs):
+            adapter = FlakyResumeAdapter(**kwargs)
+            created_adapters.append(adapter)
+            return adapter
+
+        manager = SessionManager(
+            self.store,
+            allowed_workspaces=[self.root],
+            adapter_factory=factory,
+            queue_size=4,
+        )
+
+        async def exercise():
+            session = await manager.create_session(provider="claude", workspace=str(self.root))
+            self.store.update_session(session.id, provider_session_id="stale-session")
+            queue = manager.subscribe(session.id)
+            await manager.send_message(session.id, "Continue where we left off")
+            return session.id, queue
+
+        session_id, queue = asyncio.run(exercise())
+
+        self.assertEqual(len(created_adapters), 2)
+        self.assertTrue(created_adapters[0].resume_attempted)
+        self.assertTrue(created_adapters[0].closed)
+        self.assertFalse(created_adapters[1].resume_attempted)
+        self.assertEqual(created_adapters[1].prompts, ["Continue where we left off"])
+
+        loaded = self.store.get_session(session_id)
+        self.assertEqual(loaded.provider_session_id, "fresh-session")
+        self.assertEqual(loaded.status, "running")
+        events = self.store.list_events(session_id)
+        notice = next(event for event in events if event.text == "Provider session could not be resumed; starting a new one")
+        self.assertEqual(notice.type, "notice")
+
     def test_provider_completion_returns_session_to_ready(self):
         async def exercise():
             session = await self.manager.create_session(

@@ -84,6 +84,36 @@ only a compact initialization event, visible tool activity, assistant output
 and usage. This prevents private hook context from leaking into the UI and
 keeps SQLite bounded.
 
+### Resuming a conversation whose provider session has expired
+
+A stored `provider_session_id` can stop being resumable for reasons outside
+this gateway's knowledge — the provider prunes or clears its own local
+session state. Reproduced for real against a live Claude Code CLI and a
+genuinely old session from this workstation's own `gateway.db`: `client.
+connect()` raised `ProcessError`, and the CLI's stderr (delivered separately
+through the `stderr` callback, since the SDK deliberately does not embed it
+in the exception) read `No conversation found with session ID: <id>`.
+Before this fix, `SessionManager._ensure_adapter` treated that identically
+to a real connection failure — marked the session `failed` and left it
+there. Every reconnect attempt repeated the same failure, permanently
+bricking the conversation; the operator saw only a generic "Command failed
+with exit code 1" with no explanation and no way to continue that chat.
+
+`SessionManager._start_with_resume_fallback` now catches a failed resume
+specifically (only when a `provider_session_id` was already stored, i.e.
+this is a reconnect, not a first connect) and retries once with a fresh
+provider session instead of failing outright. A `notice`-type event records
+what happened and renders inline in the conversation timeline (not just the
+raw log) so the operator knows the old provider-side thread is gone even
+though the durable transcript here is intact. This is provider-agnostic —
+the same fallback covers Codex if its app-server ever prunes a thread the
+same way — and it also means every command that goes through
+`_ensure_adapter` (`/status`, `/rename`, `/compact`, `/review`, dynamic
+Claude commands) self-heals from an unresumable session instead of failing.
+Verified against the actual broken session ID pulled from this
+workstation's real database (not a synthetic fixture), plus a unit test in
+`tests/test_session_manager.py`.
+
 ## Persistence and live updates
 
 `.rocketry/gateway.db` uses SQLite WAL mode and stores:

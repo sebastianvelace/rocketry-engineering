@@ -30,6 +30,7 @@ EventType = Literal[
     "subagent_progress",
     "subagent_completed",
     "plan_updated",
+    "notice",
     "approval_requested",
     "approval_resolved",
     "usage",

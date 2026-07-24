@@ -88,6 +88,17 @@ describe("unified activity timeline", () => {
     });
   });
 
+  it("surfaces a resume-fallback notice inline instead of only in the raw log", () => {
+    const timeline = buildTimeline([
+      event(1, "notice", "Provider session could not be resumed; starting a new one"),
+    ]);
+    expect(timeline[0]).toEqual({
+      kind: "notice",
+      id: "event-1",
+      text: "Provider session could not be resumed; starting a new one",
+    });
+  });
+
   it("still exposes the raw event log for troubleshooting", () => {
     expect(
       activityEvents([

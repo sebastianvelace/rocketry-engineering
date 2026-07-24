@@ -106,7 +106,10 @@ The desktop client provides:
   and
 - a Bench capture timeout that reports what was actually seen on the wire
   (bytes, lines, last line, whether a block ever started) instead of a bare
-  failure.
+  failure; and
+- automatic recovery when reopening an old conversation whose provider-side
+  session has expired or been cleared — a fresh provider session starts
+  instead of the conversation getting permanently stuck.
 
 Claude is intentionally started with the Rocketry MCP only. Built-in Claude
 Code tools and project commands remain available, while unrelated account

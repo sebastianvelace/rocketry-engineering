@@ -358,6 +358,8 @@ option {
 .timeline-thinking p, .timeline-subagent p { margin: 0; white-space: pre-wrap; }
 .timeline-error { color: var(--warning); }
 .timeline-error svg { color: var(--warning); }
+.timeline-notice { color: var(--muted); }
+.timeline-notice svg { color: var(--muted); }
 .timeline-subagent span { display: block; margin-bottom: 3px; color: var(--muted); font-family: "Geist Mono Variable", monospace; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
 .timeline-subagent.status-running span::after { margin-left: 6px; color: var(--accent); content: "●"; }
 

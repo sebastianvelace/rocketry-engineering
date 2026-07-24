@@ -62,6 +62,7 @@ const RAW_LOG_EVENT_TYPES = [
   "subagent_progress",
   "subagent_completed",
   "plan_updated",
+  "notice",
   "error",
 ];
 

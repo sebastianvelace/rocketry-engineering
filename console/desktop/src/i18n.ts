@@ -138,6 +138,7 @@ const eventCopy: Record<Language, Record<string, string>> = {
     subagent_progress: "subagent progress",
     subagent_completed: "subagent completed",
     plan_updated: "plan updated",
+    notice: "notice",
     error: "error",
   },
   es: {
@@ -151,6 +152,7 @@ const eventCopy: Record<Language, Record<string, string>> = {
     subagent_progress: "progreso del subagente",
     subagent_completed: "subagente completado",
     plan_updated: "plan actualizado",
+    notice: "aviso",
     error: "error",
   },
 };
