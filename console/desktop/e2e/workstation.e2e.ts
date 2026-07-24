@@ -95,7 +95,12 @@ const richActivityEvents = [
     type: "plan_updated",
     role: null,
     text: "turn/plan/updated",
-    data: { plan: [{ step: "Seed the RNG in the fixture", status: "completed" }] },
+    data: {
+      plan: [
+        { step: "Seed the RNG in the fixture", status: "completed" },
+        { step: "Re-run the flaky test", status: "inProgress" },
+      ],
+    },
     raw: {},
   },
   {
@@ -119,6 +124,9 @@ test("thinking, tool calls, subagents and plan updates render inline in the conv
   await expect(feed.locator(".timeline-thinking")).toContainText("Checking the CI log");
   await expect(feed.locator(".timeline-subagent")).toContainText("Root cause: unseeded RNG");
   await expect(feed.locator(".timeline-plan li.status-completed")).toContainText("Seed the RNG in the fixture");
+  const inProgressStep = feed.locator(".timeline-plan li.status-inProgress");
+  await expect(inProgressStep).toContainText("Re-run the flaky test");
+  await expect(inProgressStep).toHaveCSS("color", "rgb(239, 68, 68)");
 
   const tool = feed.locator(".timeline-tool");
   await expect(tool).toContainText("Edit");

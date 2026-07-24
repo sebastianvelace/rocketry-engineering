@@ -385,7 +385,7 @@ option {
 .timeline-plan ul { margin: 10px 0 0; padding: 0; list-style: none; }
 .timeline-plan li { padding: 3px 0; color: var(--muted); font-size: 12px; }
 .timeline-plan li.status-completed { color: var(--positive); text-decoration: line-through; text-decoration-color: var(--line); }
-.timeline-plan li.status-in_progress { color: var(--accent); }
+.timeline-plan li.status-inProgress, .timeline-plan li.status-in_progress { color: var(--accent); }
 .markdown-body a { color: #ff777b; text-underline-offset: 3px; }
 .markdown-body code {
   padding: 1px 4px;

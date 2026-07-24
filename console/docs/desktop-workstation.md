@@ -238,11 +238,28 @@ every new message/payload shape, a frontend unit test
 (`desktop/src/App.test.ts`) asserting the merge order, and a mocked-gateway
 Playwright scenario (`desktop/e2e/workstation.e2e.ts`) asserting thinking,
 a tool call, a subagent and a plan update all render inline in the
-conversation. The Claude side of this — `thinking` and `tool_started`/
-`tool_completed` — was additionally confirmed against a real Claude turn
-(the same live check described below for `AskUserQuestion`). Claude
-subagent lifecycle events and Codex's `plan_updated` still haven't been
-exercised against a live turn.
+conversation.
+
+**Every event type in this section is now confirmed against a real
+provider turn**, not just the assumed schema:
+
+- Claude `thinking`, `tool_started`/`tool_completed` — confirmed (see
+  `AskUserQuestion` below for the same live-check approach).
+- Claude subagents — a live `Task` tool call matched the assumed shape
+  exactly, including a detail the SDK's own docs call out but that's easy
+  to miss: a completed subagent fires **two** `subagent_completed` events
+  (one generic `TaskUpdatedMessage` patch, one `TaskNotificationMessage`
+  with the actual output). Both target the same timeline card via
+  `task_id`, so the card updates in place instead of duplicating, and the
+  more useful notification text — the subagent's real output — naturally
+  wins since it arrives second.
+- Codex `plan_updated` — the assumed `{plan: [{step, status}]}` shape was
+  right, but the live turn used `status: "inProgress"` (camelCase) where
+  the CSS only had a `status-in_progress` (snake_case) selector — a real,
+  if minor, bug: in-progress plan steps never got the accent-color
+  treatment. Fixed with a selector for both spellings; `desktop/e2e/
+  workstation.e2e.ts` now asserts the computed color on an `inProgress`
+  step so this can't silently regress again.
 
 ### Structured `AskUserQuestion` (Claude)
 
