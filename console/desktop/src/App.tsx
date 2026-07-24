@@ -24,22 +24,25 @@ import {
 } from "@phosphor-icons/react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import { CSSProperties, FormEvent, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { GatewayApi, connectGateway } from "./api";
+import { activityEvents, extractRunId } from "./agentEvents";
 import { AskUserQuestionItem, AskUserQuestionPanel, buildTimeline, DiffBlock, Timeline, unifiedDiffToLines } from "./ActivityFeed";
+import { useComposer } from "./hooks/useComposer";
+import { useGatewayWorkspace } from "./hooks/useGatewayWorkspace";
+import { usePersistedState } from "./hooks/usePersistedState";
+import { useResizableRail } from "./hooks/useResizableRail";
+import { useSessionTransport } from "./hooks/useSessionTransport";
 import { CopyKey, eventLabel, Language, statusLabel, translate } from "./i18n";
 import type {
-  AgentEvent,
   Approval,
-  Artifact,
-  EngineeringStatus,
   Provider,
   ProviderCommand,
   ProviderModel,
-  RunRecord,
   RunSummary,
   Session,
   WorktreeReview,
 } from "./types";
+
+export { activityEvents, extractRunId };
 
 type View = "agent" | "bench" | "wiring" | "motor" | "flight" | "history" | "usage";
 type ResultTab = "runs" | "activity" | "artifacts";
@@ -59,60 +62,10 @@ function ViewLoading() {
   return <div className="view-loading" />;
 }
 
-const RAW_LOG_EVENT_TYPES = [
-  "tool_started",
-  "tool_progress",
-  "tool_completed",
-  "command_output",
-  "reasoning",
-  "thinking",
-  "subagent_started",
-  "subagent_progress",
-  "subagent_completed",
-  "plan_updated",
-  "notice",
-  "error",
-];
-
-export function activityEvents(events: AgentEvent[]): AgentEvent[] {
-  return events.filter((event) => RAW_LOG_EVENT_TYPES.includes(event.type));
-}
-
 function compactDetail(value: unknown): string {
   if (typeof value === "string") return value;
   if (value === null || value === undefined) return "";
   return JSON.stringify(value, null, 2);
-}
-
-export function extractRunId(value: unknown, depth = 0): number | null {
-  if (depth > 6 || value === null || value === undefined) return null;
-  if (typeof value === "string") {
-    if (!value.includes("run_id")) return null;
-    try {
-      return extractRunId(JSON.parse(value), depth + 1);
-    } catch {
-      const match = value.match(/["']?run_id["']?\s*[:=]\s*(\d+)/);
-      return match ? Number(match[1]) : null;
-    }
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = extractRunId(item, depth + 1);
-      if (found !== null) return found;
-    }
-    return null;
-  }
-  if (typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    const direct = record.run_id;
-    if (typeof direct === "number" && Number.isInteger(direct)) return direct;
-    if (typeof direct === "string" && /^\d+$/.test(direct)) return Number(direct);
-    for (const nested of Object.values(record)) {
-      const found = extractRunId(nested, depth + 1);
-      if (found !== null) return found;
-    }
-  }
-  return null;
 }
 
 const viewCopy: Record<View, { es: string; en: string }> = {
@@ -127,23 +80,11 @@ const viewCopy: Record<View, { es: string; en: string }> = {
 
 export default function App() {
   const reducedMotion = useReducedMotion();
-  const [language, setLanguage] = useState<Language>(() => (localStorage.getItem("rocketry-language") as Language) || "es");
-  const [view, setView] = useState<View>(() => (localStorage.getItem("rocketry-view") as View) || "agent");
+  const [language, setLanguage] = usePersistedState<Language>("rocketry-language", "es");
+  const [view, setView] = usePersistedState<View>("rocketry-view", "agent");
   const t = useCallback((key: CopyKey) => translate(language, key), [language]);
-  const [api, setApi] = useState<GatewayApi | null>(null);
-  const [connectionError, setConnectionError] = useState("");
-  const [bootStage, setBootStage] = useState<"gateway" | "workspace">("gateway");
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [events, setEvents] = useState<AgentEvent[]>([]);
-  const [approvals, setApprovals] = useState<Approval[]>([]);
-  const [status, setStatus] = useState<EngineeringStatus | null>(null);
-  const [runs, setRuns] = useState<RunSummary[]>([]);
-  const [selectedRun, setSelectedRun] = useState<RunRecord | null>(null);
-  const [newAgentRunId, setNewAgentRunId] = useState<number | null>(null);
-  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const workspace = useGatewayWorkspace();
   const [tab, setTab] = useState<ResultTab>("runs");
-  const [composer, setComposer] = useState("");
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
   const [deletingSession, setDeletingSession] = useState(false);
@@ -153,178 +94,73 @@ export default function App() {
   const [newProvider, setNewProvider] = useState<Provider>("codex");
   const [newTitle, setNewTitle] = useState("");
   const [newIsolated, setNewIsolated] = useState(false);
-  const [socketConnected, setSocketConnected] = useState(false);
-  const [warming, setWarming] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [modelPickerOpen, setModelPickerOpen] = useState(false);
-  const [railWidth, setRailWidth] = useState(() => Number(localStorage.getItem("rocketry-rail-width")) || 72);
+  const rail = useResizableRail();
   const feedEnd = useRef<HTMLDivElement>(null);
-  const warmed = useRef<Set<string>>(new Set());
-  const knownRunIds = useRef<Set<number>>(new Set());
-  const agentRunTimer = useRef<number | undefined>(undefined);
 
-  const selectedSession = sessions.find((session) => session.id === selectedId) || null;
-  const timeline = useMemo(() => buildTimeline(events), [events]);
-  const activity = useMemo(() => activityEvents(events), [events]);
+  const requestUsageView = useCallback(() => setView("usage"), [setView]);
+  const onRunCompleted = useCallback((runId: number | null) => {
+    void workspace.refreshEngineering(true, runId, () => setTab("runs"));
+  }, [workspace.refreshEngineering]);
+
+  const transport = useSessionTransport({
+    api: workspace.api,
+    selectedId: workspace.selectedId,
+    onConnectionError: workspace.setConnectionError,
+    onSessionActivity: workspace.refreshSessions,
+    onRunCompleted,
+  });
+
+  const selectedSession = workspace.sessions.find((session) => session.id === workspace.selectedId) || null;
+  const timeline = useMemo(() => buildTimeline(transport.events), [transport.events]);
+  const activity = useMemo(() => activityEvents(transport.events), [transport.events]);
   const commands = useMemo(() => {
-    const capability = [...events].reverse().find((event) => event.text === "Provider capabilities");
+    const capability = [...transport.events].reverse().find((event) => event.text === "Provider capabilities");
     return (capability?.data.commands || []) as ProviderCommand[];
-  }, [events]);
+  }, [transport.events]);
   const models = useMemo(() => {
-    const capability = [...events].reverse().find((event) => event.text === "Provider capabilities");
+    const capability = [...transport.events].reverse().find((event) => event.text === "Provider capabilities");
     return (capability?.data.models || []) as ProviderModel[];
-  }, [events]);
+  }, [transport.events]);
   const currentModel = String(
     selectedSession?.metadata?.model
     || models.find((model) => model.isDefault)?.value
     || models.find((model) => model.value === "default")?.value
     || "default",
   );
-  const commandMatches = useMemo(() => {
-    if (!composer.startsWith("/") || composer.includes(" ")) return [];
-    const query = composer.slice(1).toLowerCase();
-    return commands.filter((command) => command.name.toLowerCase().includes(query)).slice(0, 7);
-  }, [commands, composer]);
 
-  const loadGateway = useCallback(async () => {
-    setConnectionError("");
-    setBootStage("gateway");
-    try {
-      const client = new GatewayApi(await connectGateway());
-      setBootStage("workspace");
-      let loaded: [Session[], EngineeringStatus, RunSummary[], Artifact[]] | null = null;
-      let lastError: unknown;
-      for (const delay of [0, 150, 300, 600, 1200]) {
-        if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
-        try {
-          loaded = await Promise.all([
-            client.sessions(), client.status(), client.runs(), client.artifacts(),
-          ]);
-          break;
-        } catch (error) {
-          lastError = error;
-        }
-      }
-      if (!loaded) throw lastError || new Error("Gateway unavailable.");
-      const [nextSessions, nextStatus, nextRuns, nextArtifacts] = loaded;
-      setApi(client);
-      setSessions(nextSessions);
-      setStatus(nextStatus);
-      setRuns(nextRuns);
-      knownRunIds.current = new Set(nextRuns.map((run) => run.id));
-      setArtifacts(nextArtifacts);
-      setSelectedId((current) => current || nextSessions[0]?.id || null);
-    } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : String(error));
-    }
-  }, []);
+  const agentComposer = useComposer({
+    api: workspace.api,
+    selectedId: workspace.selectedId,
+    selectedSession,
+    commands,
+    busy,
+    setBusy,
+    onError: workspace.setConnectionError,
+    updateSessions: workspace.setSessions,
+    selectSession: workspace.setSelectedId,
+    requestUsageView,
+    refreshSessions: workspace.refreshSessions,
+  });
 
-  useEffect(() => { void loadGateway(); }, [loadGateway]);
   useEffect(() => {
-    localStorage.setItem("rocketry-language", language);
     document.documentElement.lang = language;
   }, [language]);
-  useEffect(() => { localStorage.setItem("rocketry-view", view); }, [view]);
-  useEffect(() => { localStorage.setItem("rocketry-rail-width", String(railWidth)); }, [railWidth]);
-
-  const refreshEngineering = useCallback(async (followNewest = false, preferredRunId: number | null = null) => {
-    if (!api) return;
-    const [nextStatus, nextRuns, nextArtifacts] = await Promise.all([api.status(), api.runs(), api.artifacts()]);
-    const newRun = followNewest
-      ? nextRuns.find((run) => run.id === preferredRunId)
-        || nextRuns.find((run) => !knownRunIds.current.has(run.id))
-      : undefined;
-    knownRunIds.current = new Set(nextRuns.map((run) => run.id));
-    setStatus(nextStatus);
-    setRuns(nextRuns);
-    setArtifacts(nextArtifacts);
-    if (newRun) {
-      const record = await api.run(newRun.id);
-      setSelectedRun(record);
-      setTab("runs");
-      setNewAgentRunId(newRun.id);
-      window.clearTimeout(agentRunTimer.current);
-      agentRunTimer.current = window.setTimeout(() => setNewAgentRunId(null), 10_000);
-    }
-  }, [api]);
-  const refreshSessions = useCallback(async () => { if (api) setSessions(await api.sessions()); }, [api]);
 
   useEffect(() => {
-    if (api && view !== "agent") void refreshEngineering();
-  }, [api, view, refreshEngineering]);
-
-  const openSavedRun = useCallback(async (runId: number) => {
-    if (!api) return null;
-    await refreshEngineering();
-    const run = await api.run(runId);
-    setSelectedRun(run);
-    return run;
-  }, [api, refreshEngineering]);
-
-  useEffect(() => {
-    if (!api || !selectedId || warmed.current.has(selectedId)) return;
-    warmed.current.add(selectedId);
-    setWarming(true);
-    void api.connectSession(selectedId)
-      .then(() => {
-        setConnectionError("");
-        return refreshSessions();
-      })
-      .catch((error) => {
-        warmed.current.delete(selectedId);
-        setConnectionError(error instanceof Error ? error.message : String(error));
-      })
-      .finally(() => setWarming(false));
-  }, [api, selectedId, refreshSessions]);
-
-  useEffect(() => {
-    if (!api || !selectedId) { setEvents([]); return; }
-    let active = true;
-    let unsubscribe = () => {};
-    let reconnectTimer: number | undefined;
-    let lastSequence = 0;
-    const connect = async () => {
-      const history = await api.events(selectedId);
-      if (!active) return;
-      setEvents(history);
-      lastSequence = history.at(-1)?.sequence || 0;
-      setApprovals(await api.approvals(selectedId));
-      unsubscribe = api.subscribe(selectedId, lastSequence, (event) => {
-        lastSequence = Math.max(lastSequence, event.sequence);
-        setEvents((current) => current.some((item) => item.id === event.id) ? current : [...current, event]);
-        if (event.type === "approval_requested" || event.type === "approval_resolved") void api.approvals(selectedId).then(setApprovals);
-        if (event.type === "tool_completed") {
-          void refreshEngineering(true, extractRunId(event.data));
-        }
-        if (event.type === "session" || event.type === "error") void refreshSessions();
-      }, (connected) => {
-        setSocketConnected(connected);
-        if (!connected && active) reconnectTimer = window.setTimeout(connect, 1200);
-      });
-    };
-    void connect().catch((error) => setConnectionError(String(error)));
-    return () => { active = false; window.clearTimeout(reconnectTimer); unsubscribe(); setSocketConnected(false); };
-  }, [api, selectedId, refreshEngineering, refreshSessions]);
+    if (workspace.api && view !== "agent") void workspace.refreshEngineering();
+  }, [workspace.api, view, workspace.refreshEngineering]);
 
   useEffect(() => {
     if (!reducedMotion) feedEnd.current?.scrollIntoView({ behavior: "smooth" });
   }, [timeline.length, reducedMotion]);
 
-  useEffect(() => {
-    if (!api || !runs.length || selectedRun) return;
-    void api.run(runs[0].id).then(setSelectedRun);
-  }, [api, runs, selectedRun]);
-
-  useEffect(() => () => window.clearTimeout(agentRunTimer.current), []);
-
   async function createTask(event: FormEvent) {
     event.preventDefault();
-    if (!api) return;
+    if (!workspace.api) return;
     setBusy(true);
     try {
-      const session = await api.createSession(newProvider, newTitle.trim() || t("newTask"), newIsolated);
-      setSessions((current) => [session, ...current]);
-      setSelectedId(session.id);
+      await workspace.createSession(newProvider, newTitle.trim() || t("newTask"), newIsolated);
       setView("agent");
       setNewTaskOpen(false);
       setNewTitle("");
@@ -335,207 +171,73 @@ export default function App() {
   function openDeleteDialog(session: Session) {
     setSessionToDelete(session);
     setWorktreeReview(null);
-    if (api && session.metadata?.isolated_workspace) {
+    if (workspace.api && session.metadata?.isolated_workspace) {
       setWorktreeReviewLoading(true);
-      void api.getWorktreeReview(session.id)
+      void workspace.getWorktreeReview(session.id)
         .then(setWorktreeReview)
-        .catch((error) => setConnectionError(error instanceof Error ? error.message : String(error)))
+        .catch((error) => workspace.setConnectionError(error instanceof Error ? error.message : String(error)))
         .finally(() => setWorktreeReviewLoading(false));
     }
   }
 
   async function deleteConversation(force = false) {
-    if (!api || !sessionToDelete || deletingSession) return;
+    if (!workspace.api || !sessionToDelete || deletingSession) return;
     const deletedId = sessionToDelete.id;
+    const remaining = workspace.sessions.filter((session) => session.id !== deletedId);
     setDeletingSession(true);
-    setConnectionError("");
+    workspace.setConnectionError("");
     try {
-      await api.deleteSession(deletedId, force);
-      warmed.current.delete(deletedId);
-      const remaining = sessions.filter((session) => session.id !== deletedId);
-      setSessions(remaining);
-      if (selectedId === deletedId) {
-        setSelectedId(remaining[0]?.id || null);
-        setEvents([]);
-        setApprovals([]);
+      await workspace.deleteSession(deletedId, force);
+      transport.forgetSession(deletedId);
+      if (workspace.selectedId === deletedId) {
+        workspace.setSelectedId(remaining[0]?.id || null);
+        transport.resetTransport();
       }
       setSessionToDelete(null);
       setWorktreeReview(null);
     } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : String(error));
+      workspace.setConnectionError(error instanceof Error ? error.message : String(error));
     } finally {
       setDeletingSession(false);
     }
   }
 
   async function mergeAndDeleteConversation() {
-    if (!api || !sessionToDelete || mergingWorktree) return;
+    if (!workspace.api || !sessionToDelete || mergingWorktree) return;
     setMergingWorktree(true);
-    setConnectionError("");
+    workspace.setConnectionError("");
     try {
-      await api.mergeWorktree(sessionToDelete.id);
+      await workspace.mergeWorktree(sessionToDelete.id);
       await deleteConversation(false);
     } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : String(error));
+      workspace.setConnectionError(error instanceof Error ? error.message : String(error));
     } finally {
       setMergingWorktree(false);
     }
   }
 
-  async function sendMessage(event: FormEvent) {
-    event.preventDefault();
-    if (!api || !selectedId || !composer.trim() || busy) return;
-    const value = composer.trim();
-    const steeringActiveTurn = (
-      selectedSession?.provider === "codex"
-      && selectedSession.status === "running"
-    );
-    if (steeringActiveTurn) {
-      setComposer("");
-      setBusy(true);
-      try {
-        await api.steer(selectedId, value);
-      } catch (error) {
-        setConnectionError(error instanceof Error ? error.message : String(error));
-        setComposer(value);
-      } finally {
-        setBusy(false);
-      }
-      return;
-    }
-    const slashCommand = value.match(/^\/([^\s]+)(?:\s+([\s\S]+))?$/);
-    if (slashCommand) {
-      if (slashCommand[1].toLowerCase() === "model" && !slashCommand[2]) {
-        setComposer("");
-        setModelPickerOpen(true);
-        return;
-      }
-      if (slashCommand[1].toLowerCase() === "model") {
-        await changeModel(slashCommand[2].trim());
-        return;
-      }
-      await executeAgentCommand(slashCommand[1], slashCommand[2] || "");
-      setComposer("");
-      return;
-    }
-    setComposer("");
-    setBusy(true);
-    try { await api.send(selectedId, value); await refreshSessions(); }
-    catch (error) {
-      setConnectionError(error instanceof Error ? error.message : String(error));
-      setComposer(value);
-    } finally { setBusy(false); }
-  }
-
-  async function resolveApproval(approval: Approval, approved: boolean, forSession = false, answers?: Record<string, string>) {
-    if (!api) return;
-    await api.resolveApproval(approval.id, approved, forSession, answers);
-    setApprovals(await api.approvals(approval.session_id));
-  }
-
-  async function retrySelectedConnection() {
-    if (!api || !selectedId) return;
-    setWarming(true);
-    setConnectionError("");
-    try {
-      await api.connectSession(selectedId);
-      warmed.current.add(selectedId);
-      await refreshSessions();
-    } catch (error) {
-      warmed.current.delete(selectedId);
-      setConnectionError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setWarming(false);
-    }
-  }
-
-  async function changeModel(model: string) {
-    if (!api || !selectedId) return;
-    setBusy(true);
-    setConnectionError("");
-    try {
-      const updated = await api.setModel(selectedId, model);
-      setSessions((current) => current.map((session) => session.id === updated.id ? updated : session));
-      setComposer("");
-      setModelPickerOpen(false);
-    } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function executeAgentCommand(command: string, argumentsText: string) {
-    if (!api || !selectedId) return;
-    setBusy(true);
-    setConnectionError("");
-    try {
-      const result = await api.executeCommand(selectedId, command, argumentsText);
-      if (result.action === "usage") {
-        setView("usage");
-      } else if (result.action === "created") {
-        setSessions((current) => [result.session, ...current.filter((item) => item.id !== result.session.id)]);
-        setSelectedId(result.session.id);
-      } else {
-        setSessions((current) => current.map((session) => session.id === result.session.id ? result.session : session));
-      }
-      setComposer("");
-      await refreshSessions();
-    } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function chooseCommand(command: ProviderCommand) {
-    if (command.name === "model") {
-      setComposer("");
-      setModelPickerOpen(true);
-      return;
-    }
-    setComposer(`/${command.name}${command.argumentHint ? " " : ""}`);
-  }
-
-  function beginRailResize(event: React.PointerEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = railWidth;
-    const move = (next: PointerEvent) => {
-      setRailWidth(Math.max(58, Math.min(118, startWidth + next.clientX - startX)));
-    };
-    const stop = () => {
-      document.removeEventListener("pointermove", move);
-      document.removeEventListener("pointerup", stop);
-      document.body.classList.remove("resizing-rail");
-    };
-    document.body.classList.add("resizing-rail");
-    document.addEventListener("pointermove", move);
-    document.addEventListener("pointerup", stop);
-  }
-
-  if (!api) return (
+  if (!workspace.api) return (
     <main className="boot-screen">
       <div className="boot-brand">
         <img src="/rocketry-mark.svg" alt="" />
         <div><strong>ROCKETRY</strong><span>WORKSTATION</span></div>
       </div>
       <div className="boot-trajectory" aria-hidden="true"><i /><span /></div>
-      {connectionError ? (
+      {workspace.connectionError ? (
         <section className="boot-error" role="alert">
           <strong>{t("gatewayError")}</strong>
-          <code>{connectionError}</code>
-          <button className="button primary" onClick={() => void loadGateway()}><ArrowClockwise size={17} />{t("retry")}</button>
+          <code>{workspace.connectionError}</code>
+          <button className="button primary" onClick={() => void workspace.loadGateway()}><ArrowClockwise size={17} />{t("retry")}</button>
         </section>
       ) : (
         <div className="boot-status" role="status" aria-live="polite">
           <strong>
-            {bootStage === "gateway"
+            {workspace.bootStage === "gateway"
               ? (language === "es" ? "Iniciando gateway local" : "Starting local gateway")
               : (language === "es" ? "Restaurando espacio de trabajo" : "Restoring workspace")}
           </strong>
           <span>
-            {bootStage === "gateway"
+            {workspace.bootStage === "gateway"
               ? (language === "es" ? "Conectando servicios del agente" : "Connecting agent services")
               : (language === "es" ? "Cargando sesiones, corridas y artefactos" : "Loading sessions, runs and artifacts")}
           </span>
@@ -543,6 +245,17 @@ export default function App() {
       )}
     </main>
   );
+
+  const api = workspace.api;
+  const {
+    sessions, selectedId, setSelectedId, status, runs, selectedRun, setSelectedRun,
+    artifacts, newAgentRunId, connectionError, loadGateway,
+  } = workspace;
+  const { approvals, socketConnected, warming, resolveApproval, retryConnection } = transport;
+  const {
+    composer: composerText, setComposer, modelPickerOpen, setModelPickerOpen,
+    commandMatches, sendMessage, chooseCommand, changeModel,
+  } = agentComposer;
 
   const isRunning = ["running", "waiting_approval", "interrupting"].includes(selectedSession?.status || "");
   const canSteer = selectedSession?.provider === "codex" && selectedSession.status === "running";
@@ -555,13 +268,13 @@ export default function App() {
     { id: "history" as View, icon: ClockCounterClockwise },
     { id: "usage" as View, icon: Gauge },
   ];
-  const shared = { api, language, status, onRunSaved: openSavedRun };
+  const shared = { api, language, status, onRunSaved: workspace.openSavedRun };
 
   return (
     <MotionConfig reducedMotion="user">
       <div
         className={`app-shell view-${view}`}
-        style={{ "--rail-width": `${railWidth}px` } as CSSProperties}
+        style={{ "--rail-width": `${rail.railWidth}px` } as CSSProperties}
       >
         <AnimatePresence>
           {connectionError && (
@@ -577,8 +290,8 @@ export default function App() {
                 <strong>{language === "es" ? "No se pudo conectar el agente" : "Agent connection failed"}</strong>
                 <span>{connectionError}</span>
               </div>
-              <button onClick={() => void (selectedId ? retrySelectedConnection() : loadGateway())}>{t("retry")}</button>
-              <button aria-label={language === "es" ? "Cerrar error" : "Dismiss error"} onClick={() => setConnectionError("")}><X size={15} /></button>
+              <button onClick={() => void (selectedId ? retryConnection() : loadGateway())}>{t("retry")}</button>
+              <button aria-label={language === "es" ? "Cerrar error" : "Dismiss error"} onClick={() => workspace.setConnectionError("")}><X size={15} /></button>
             </motion.aside>
           )}
         </AnimatePresence>
@@ -594,22 +307,22 @@ export default function App() {
             role="separator"
             aria-label={language === "es" ? "Cambiar tamaño de navegación" : "Resize navigation"}
             aria-orientation="vertical"
-            aria-valuemin={58}
-            aria-valuemax={118}
-            aria-valuenow={railWidth}
+            aria-valuemin={rail.minWidth}
+            aria-valuemax={rail.maxWidth}
+            aria-valuenow={rail.railWidth}
             tabIndex={0}
-            onPointerDown={beginRailResize}
-            onDoubleClick={() => setRailWidth(72)}
+            onPointerDown={rail.beginRailResize}
+            onDoubleClick={() => rail.setRailWidth(rail.defaultWidth)}
             onKeyDown={(event) => {
               if (event.key === "ArrowLeft") {
                 event.preventDefault();
-                setRailWidth((width) => Math.max(58, width - 6));
+                rail.setRailWidth((width) => Math.max(rail.minWidth, width - 6));
               } else if (event.key === "ArrowRight") {
                 event.preventDefault();
-                setRailWidth((width) => Math.min(118, width + 6));
+                rail.setRailWidth((width) => Math.min(rail.maxWidth, width + 6));
               } else if (event.key === "Home") {
                 event.preventDefault();
-                setRailWidth(72);
+                rail.setRailWidth(rail.defaultWidth);
               }
             }}
           />
@@ -664,7 +377,7 @@ export default function App() {
               {view === "wiring" && <Suspense fallback={<ViewLoading />}><WiringView {...shared} /></Suspense>}
               {view === "motor" && <Suspense fallback={<ViewLoading />}><MotorView {...shared} /></Suspense>}
               {view === "flight" && <Suspense fallback={<ViewLoading />}><FlightView {...shared} /></Suspense>}
-              {view === "history" && <Suspense fallback={<ViewLoading />}><HistoryView {...shared} runs={runs} selectedRun={selectedRun} setSelectedRun={setSelectedRun} refresh={refreshEngineering} /></Suspense>}
+              {view === "history" && <Suspense fallback={<ViewLoading />}><HistoryView {...shared} runs={runs} selectedRun={selectedRun} setSelectedRun={setSelectedRun} refresh={workspace.refreshEngineering} /></Suspense>}
               {view === "usage" && <Suspense fallback={<ViewLoading />}><UsageView api={api} language={language} /></Suspense>}
               {view === "agent" && (
                 <div className="agent-workspace">
@@ -689,7 +402,7 @@ export default function App() {
                       <div className="message-feed">
                         {!timeline.length && <div className="agent-intro"><span>R/ AGENT HARNESS</span><h2>{t("noConversation")}</h2><p>{language === "es" ? "Puedes pedir una prueba en lenguaje natural o escribir / para usar un comando del proveedor." : "Ask for a test in natural language or type / to use a provider command."}</p></div>}
                         <Timeline items={timeline} provider={selectedSession.provider} language={language} />
-                        {approvals.map((approval) => approval.details.kind === "ask_user_question" ? (
+                        {approvals.map((approval: Approval) => approval.details.kind === "ask_user_question" ? (
                           <AskUserQuestionPanel
                             key={approval.id}
                             questions={approval.details.questions as AskUserQuestionItem[]}
@@ -702,7 +415,7 @@ export default function App() {
                         ))}
                         <div ref={feedEnd} />
                       </div>
-                      <form className="composer" onSubmit={sendMessage}>
+                      <form className="composer" onSubmit={(event) => void sendMessage(event)}>
                         <AnimatePresence>
                           {modelPickerOpen && (
                             <motion.div className="model-picker" initial={reducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}>
@@ -730,7 +443,7 @@ export default function App() {
                         {!modelPickerOpen && commandMatches.length > 0 && <div className="command-palette">{commandMatches.map((command) => <button type="button" onClick={() => chooseCommand(command)} key={command.name}><code>/{command.name}</code><span>{command.description}</span><small>{command.argumentHint}</small></button>)}</div>}
                         <textarea
                           rows={3}
-                          value={composer}
+                          value={composerText}
                           onChange={(event) => setComposer(event.target.value)}
                           onKeyDown={(event) => {
                             if (event.key === "Enter" && !event.shiftKey) {
@@ -746,16 +459,16 @@ export default function App() {
                           {isRunning ? (
                             <div className="active-turn-actions">
                               <button type="button" className="button danger" onClick={() => void api.interrupt(selectedSession.id)}><Stop size={15} />{t("stop")}</button>
-                              {canSteer && <button className="button primary" disabled={!composer.trim() || busy}>{busy ? <CircleNotch className="spin" /> : <Check />}{t("guideTurn")}</button>}
+                              {canSteer && <button className="button primary" disabled={!composerText.trim() || busy}>{busy ? <CircleNotch className="spin" /> : <Check />}{t("guideTurn")}</button>}
                             </div>
                           ) : (
-                            <button className="button primary" disabled={!composer.trim() || busy || warming}>{busy || warming ? <CircleNotch className="spin" /> : <Check />}{t("send")}</button>
+                            <button className="button primary" disabled={!composerText.trim() || busy || warming}>{busy || warming ? <CircleNotch className="spin" /> : <Check />}{t("send")}</button>
                           )}
                         </div>
                       </form>
                     </section>
                     <section className="result-dock">
-                      <header><nav><button className={tab === "runs" ? "active" : ""} onClick={() => setTab("runs")}><ChartLine />{t("runs")}</button><button className={tab === "activity" ? "active" : ""} onClick={() => setTab("activity")}><Pulse />{t("activity")}</button><button className={tab === "artifacts" ? "active" : ""} onClick={() => setTab("artifacts")}><FolderOpen />{t("artifacts")}</button></nav><button onClick={() => void refreshEngineering()}><ArrowClockwise /></button></header>
+                      <header><nav><button className={tab === "runs" ? "active" : ""} onClick={() => setTab("runs")}><ChartLine />{t("runs")}</button><button className={tab === "activity" ? "active" : ""} onClick={() => setTab("activity")}><Pulse />{t("activity")}</button><button className={tab === "artifacts" ? "active" : ""} onClick={() => setTab("artifacts")}><FolderOpen />{t("artifacts")}</button></nav><button onClick={() => void workspace.refreshEngineering()}><ArrowClockwise /></button></header>
                       {tab === "runs" && (
                         <div className={`dock-content ${newAgentRunId ? "agent-result-arrived" : ""}`}>
                           <AnimatePresence>
