@@ -86,6 +86,11 @@ The desktop client provides:
 - an explicitly visible full-repository workspace boundary;
 - a resizable global navigation rail and consistently dark native controls;
 - provider prewarming without consuming a model turn;
+- startup recovery that waits for a real gateway health response and retries
+  transient initial loads before declaring the session store unavailable;
+- lower-noise Claude permissions: Rocketry's bounded local MCP is preapproved,
+  edits use `acceptEdits`, and a narrow set of read/verification Bash commands
+  is allowed while installs, publishing and arbitrary shell remain gated;
 - live engineering plots, run comparison, CSV export and persistent artifacts;
 - a bilingual English/Spanish interface saved in local preferences; and
 - a normalized activity view with raw command output available when relevant.

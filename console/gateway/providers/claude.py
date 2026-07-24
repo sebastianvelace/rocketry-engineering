@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import shutil
 import uuid
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,17 @@ from gateway.providers.base import (
     ProviderError,
     ProviderEvent,
 )
+
+CLAUDE_ALLOWED_TOOLS = [
+    "mcp__rocketry__*",
+    "Bash(eza *)",
+    "Bash(rg --files *)",
+    "Bash(gh auth status *)",
+    "Bash(pnpm test *)",
+    "Bash(pnpm build *)",
+    "Bash(pnpm exec playwright test *)",
+    "Bash(cargo check *)",
+]
 
 
 def normalize_claude(payload: dict[str, Any]) -> list[ProviderEvent]:
@@ -263,12 +275,23 @@ class ClaudeAdapter:
         console_root = Path(__file__).resolve().parents[2]
         rocketry_python = console_root / ".venv" / "bin" / "python"
         rocketry_server = console_root / "rocketry_mcp.py"
+        self.sandbox_enabled = bool(shutil.which("bwrap") and shutil.which("socat"))
         options = ClaudeAgentOptions(
             cwd=workspace,
             resume=provider_session_id,
             session_id=None if provider_session_id else self.provider_session_id,
-            permission_mode="default",
+            permission_mode="acceptEdits",
             can_use_tool=self._request_permission,
+            allowed_tools=CLAUDE_ALLOWED_TOOLS,
+            sandbox=(
+                {
+                    "enabled": True,
+                    "autoAllowBashIfSandboxed": True,
+                    "allowUnsandboxedCommands": True,
+                }
+                if self.sandbox_enabled
+                else None
+            ),
             include_partial_messages=True,
             include_hook_events=False,
             setting_sources=["project", "local"],
@@ -338,6 +361,7 @@ class ClaudeAdapter:
                         "commands": self.available_commands,
                         "models": self.available_models,
                         "output_style": info.get("output_style"),
+                        "sandbox_enabled": self.sandbox_enabled,
                     },
                 )
             )
@@ -401,10 +425,18 @@ class ClaudeAdapter:
         if future.done():
             return
         if approved:
+            session_permissions = (
+                [
+                    dataclasses.replace(suggestion, destination="session")
+                    for suggestion in suggestions
+                ]
+                if for_session
+                else None
+            )
             future.set_result(
                 PermissionResultAllow(
                     updated_input=input_data,
-                    updated_permissions=suggestions if for_session else None,
+                    updated_permissions=session_permissions,
                 )
             )
         else:

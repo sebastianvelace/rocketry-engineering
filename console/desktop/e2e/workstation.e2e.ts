@@ -71,6 +71,7 @@ const events = [
 
 async function mockGateway(page: Page) {
   let selectedModel = "default";
+  let sessionLoads = 0;
   await page.routeWebSocket("ws://gateway.test/**", () => {});
   await page.route("http://gateway.test/**", async (route) => {
     const request = route.request();
@@ -78,9 +79,16 @@ async function mockGateway(page: Page) {
     const path = url.pathname;
     const method = request.method();
     let payload: Record<string, unknown>;
+    let status = 200;
 
     if (path === "/api/sessions" && method === "GET") {
-      payload = { ok: true, sessions: [{ ...baseSession, metadata: { model: selectedModel } }] };
+      sessionLoads += 1;
+      if (sessionLoads === 1) {
+        status = 503;
+        payload = { ok: false, error: { message: "Gateway is still starting" } };
+      } else {
+        payload = { ok: true, sessions: [{ ...baseSession, metadata: { model: selectedModel } }] };
+      }
     } else if (path === "/api/status") {
       payload = {
         ok: true,
@@ -154,7 +162,7 @@ async function mockGateway(page: Page) {
     }
 
     await route.fulfill({
-      status: 200,
+      status,
       contentType: "application/json",
       body: JSON.stringify(payload),
     });

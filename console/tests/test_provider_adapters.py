@@ -14,6 +14,7 @@ from claude_agent_sdk import (
     ToolPermissionContext,
     ToolUseBlock,
 )
+from claude_agent_sdk.types import PermissionRuleValue, PermissionUpdate
 
 from gateway.providers.base import ProviderApproval
 from gateway.providers.claude import (
@@ -355,6 +356,51 @@ class ProviderNormalizationTests(unittest.TestCase):
         self.assertEqual(approvals[0].details["input"], {"command": "git fetch"})
         self.assertIsInstance(result, PermissionResultAllow)
         self.assertEqual(result.updated_input, {"command": "git fetch"})
+
+    def test_claude_uses_sandboxed_low_prompt_mode_and_session_scoped_approval(self):
+        async def exercise():
+            adapter = None
+
+            async def emit(event):
+                pass
+
+            async def approve(request):
+                await adapter.resolve_approval(
+                    request.request_id,
+                    approved=True,
+                    for_session=True,
+                )
+
+            adapter = ClaudeAdapter(
+                workspace=Path("/tmp"),
+                event_sink=emit,
+                approval_sink=approve,
+            )
+            result = await adapter._request_permission(
+                "Bash",
+                {"command": "pnpm test"},
+                ToolPermissionContext(
+                    tool_use_id="tool-1",
+                    suggestions=[
+                        PermissionUpdate(
+                            type="addRules",
+                            rules=[PermissionRuleValue("Bash", "pnpm test")],
+                            behavior="allow",
+                            destination="localSettings",
+                        )
+                    ],
+                ),
+            )
+            return adapter.client.options, result
+
+        options, result = asyncio.run(exercise())
+        self.assertEqual(options.permission_mode, "acceptEdits")
+        self.assertIn("mcp__rocketry__*", options.allowed_tools)
+        self.assertIn("Bash(eza *)", options.allowed_tools)
+        if options.sandbox is not None:
+            self.assertTrue(options.sandbox["enabled"])
+            self.assertTrue(options.sandbox["autoAllowBashIfSandboxed"])
+        self.assertEqual(result.updated_permissions[0].destination, "session")
 
     def test_claude_discards_internal_status_and_compacts_init(self):
         self.assertEqual(

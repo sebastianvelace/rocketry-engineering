@@ -1,9 +1,11 @@
 use serde::Serialize;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use tauri::Manager;
 use uuid::Uuid;
 
 struct GatewayProcess {
@@ -45,6 +47,34 @@ fn available_port() -> Result<u16, String> {
         .local_addr()
         .map(|address| address.port())
         .map_err(|error| format!("Could not read the gateway port: {error}"))
+}
+
+fn wait_for_gateway(child: &mut Child, port: u16) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(12);
+    let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
+    while Instant::now() < deadline {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|error| format!("Could not inspect the gateway process: {error}"))?
+        {
+            return Err(format!("The gateway exited during startup with {status}."));
+        }
+        if let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(250)) {
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+            let request = b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+            if stream.write_all(request).is_ok() {
+                let mut response = String::new();
+                if stream.read_to_string(&mut response).is_ok()
+                    && response.starts_with("HTTP/1.1 200")
+                    && response.contains("\"ok\":true")
+                {
+                    return Ok(());
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    Err("The gateway did not accept HTTP requests within 12 seconds.".to_string())
 }
 
 #[tauri::command]
@@ -111,6 +141,11 @@ fn start_gateway(state: tauri::State<GatewayState>) -> Result<GatewayConnection,
         let _ = child.kill();
         return Err(format!("Unexpected gateway startup response: {startup}"));
     }
+    if let Err(error) = wait_for_gateway(&mut child, port) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(error);
+    }
     let connection = GatewayConnection {
         base_url: format!("http://127.0.0.1:{port}"),
         token,
@@ -127,6 +162,12 @@ fn start_gateway(state: tauri::State<GatewayState>) -> Result<GatewayConnection,
 pub fn run() {
     tauri::Builder::default()
         .manage(GatewayState::default())
+        .setup(|app| {
+            start_gateway(app.state::<GatewayState>())
+                .map(|_| ())
+                .map_err(std::io::Error::other)?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![start_gateway])
         .run(tauri::generate_context!())
         .expect("error while running Rocketry Workstation");

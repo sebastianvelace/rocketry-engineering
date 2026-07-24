@@ -158,10 +158,22 @@ export default function App() {
     setConnectionError("");
     try {
       const client = new GatewayApi(await connectGateway());
+      let loaded: [Session[], EngineeringStatus, RunSummary[], Artifact[]] | null = null;
+      let lastError: unknown;
+      for (const delay of [0, 150, 300, 600, 1200]) {
+        if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
+        try {
+          loaded = await Promise.all([
+            client.sessions(), client.status(), client.runs(), client.artifacts(),
+          ]);
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (!loaded) throw lastError || new Error("Gateway unavailable.");
+      const [nextSessions, nextStatus, nextRuns, nextArtifacts] = loaded;
       setApi(client);
-      const [nextSessions, nextStatus, nextRuns, nextArtifacts] = await Promise.all([
-        client.sessions(), client.status(), client.runs(), client.artifacts(),
-      ]);
       setSessions(nextSessions);
       setStatus(nextStatus);
       setRuns(nextRuns);
@@ -421,7 +433,7 @@ export default function App() {
                 <strong>{language === "es" ? "No se pudo conectar el agente" : "Agent connection failed"}</strong>
                 <span>{connectionError}</span>
               </div>
-              {selectedId && <button onClick={() => void retrySelectedConnection()}>{t("retry")}</button>}
+              <button onClick={() => void (selectedId ? retrySelectedConnection() : loadGateway())}>{t("retry")}</button>
               <button aria-label={language === "es" ? "Cerrar error" : "Dismiss error"} onClick={() => setConnectionError("")}><X size={15} /></button>
             </motion.aside>
           )}

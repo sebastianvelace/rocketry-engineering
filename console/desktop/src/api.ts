@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import type {
   AgentEvent,
   Approval,
@@ -17,12 +17,8 @@ import type {
   OperationResult,
 } from "./types";
 
-function runningInTauri(): boolean {
-  return "__TAURI_INTERNALS__" in window;
-}
-
 export async function connectGateway(): Promise<GatewayConnection> {
-  if (runningInTauri()) {
+  if (isTauri()) {
     return invoke<GatewayConnection>("start_gateway");
   }
   return {

@@ -19,7 +19,11 @@ Rocketry MCP
 The React client never receives provider credentials and cannot start an
 arbitrary process. Tauri generates an ephemeral token, starts the gateway on a
 random `127.0.0.1` port and passes the connection values through an invoke
-command. The gateway restricts workspaces to the repository root.
+command. The packaged client uses Tauri's official `isTauri()` runtime check;
+it no longer guesses from an internal global that is not guaranteed in
+production builds. Tauri waits for `/health` to answer before returning the
+connection, and React retries a bounded set of transient startup failures. The
+gateway restricts workspaces to the repository root.
 
 ## Provider behavior
 
@@ -52,6 +56,21 @@ binary:
 - a native `/model` picker populated from Claude Code's own capability
   response; and
 - per-session model persistence and restoration when a conversation reconnects.
+
+Claude uses `acceptEdits` instead of the prompt-heavy default mode. Every tool
+from the strictly configured local `rocketry` MCP is preapproved because that
+server exposes only bounded measurement, simulation, history and fixed-test
+operations—no ignition, launch actuation or arbitrary shell. A small allowlist
+covers common read/verification commands such as `eza`, `rg --files`, project
+builds and test runners. Package installation, arbitrary Bash, publishing,
+network-sensitive commands and sandbox escapes still require approval.
+
+On Linux, Claude's Bash sandbox is enabled automatically only when both
+`bubblewrap` and `socat` are installed. If either dependency is missing, the
+adapter does not pretend the sandbox is active and falls back to the narrow
+allowlist plus interactive approval. "Allow for session" rewrites the SDK's
+suggested permission destination to the current session; it no longer silently
+writes a permanent project-local rule.
 
 The composer uses a small provider-aware router. `/model`, `/usage`, `/status`,
 `/rename` and `/clear` have consistent workstation behavior. Codex additionally
@@ -189,6 +208,15 @@ There is no duplicate simulation implementation in React.
   Claude subscription windows through `/usage` and Codex rate-limit plus
   historical-token data through app-server. Its cached response avoids
   continuous provider polling.
+- A cold packaged-app start opened the canonical
+  `console/.rocketry/gateway.db`, passed the native `/health` readiness probe
+  and returned all 10 stored sessions. Browser E2E also recovered after an
+  injected first-request `503`.
+- A real Claude turn ran the previously prompt-triggering
+  `eza -la console | head -5` inspection with zero approval callbacks under
+  the narrow allowlist. This workstation currently has `bubblewrap` but not
+  `socat`, so full Claude Bash sandboxing remains disabled until that system
+  dependency is installed.
 - A one-geometry openMotor E2E created run #8 with one viable `67F133`
   configuration and 66.54 N·s simulated impulse.
 - An OpenRocket E2E created run #9 with 1503.33 m simulated apogee and no
