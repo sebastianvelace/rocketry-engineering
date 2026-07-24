@@ -22,19 +22,11 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
-import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GatewayApi, connectGateway } from "./api";
 import { AskUserQuestionItem, AskUserQuestionPanel, buildTimeline, Timeline } from "./ActivityFeed";
-import {
-  BenchView,
-  FlightView,
-  HistoryView,
-  MotorView,
-  WiringView,
-} from "./EngineeringViews";
 import { CopyKey, eventLabel, Language, statusLabel, translate } from "./i18n";
 import { RunPlot } from "./RunPlot";
-import { UsageView } from "./UsageView";
 import type {
   AgentEvent,
   Approval,
@@ -50,6 +42,20 @@ import type {
 
 type View = "agent" | "bench" | "wiring" | "motor" | "flight" | "history" | "usage";
 type ResultTab = "runs" | "activity" | "artifacts";
+
+// Deferred: none of these are needed for the default Agent view, so they
+// ship in a separate chunk loaded only when the operator first navigates
+// to an engineering surface.
+const BenchView = lazy(() => import("./EngineeringViews").then((module) => ({ default: module.BenchView })));
+const WiringView = lazy(() => import("./EngineeringViews").then((module) => ({ default: module.WiringView })));
+const MotorView = lazy(() => import("./EngineeringViews").then((module) => ({ default: module.MotorView })));
+const FlightView = lazy(() => import("./EngineeringViews").then((module) => ({ default: module.FlightView })));
+const HistoryView = lazy(() => import("./EngineeringViews").then((module) => ({ default: module.HistoryView })));
+const UsageView = lazy(() => import("./UsageView").then((module) => ({ default: module.UsageView })));
+
+function ViewLoading() {
+  return <div className="view-loading" />;
+}
 
 const RAW_LOG_EVENT_TYPES = [
   "tool_started",
@@ -526,12 +532,12 @@ export default function App() {
         <main className="main-stage">
           <AnimatePresence mode="wait">
             <motion.div key={view} className="view-motion" initial={reducedMotion ? false : { opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
-              {view === "bench" && <BenchView {...shared} />}
-              {view === "wiring" && <WiringView {...shared} />}
-              {view === "motor" && <MotorView {...shared} />}
-              {view === "flight" && <FlightView {...shared} />}
-              {view === "history" && <HistoryView {...shared} runs={runs} selectedRun={selectedRun} setSelectedRun={setSelectedRun} refresh={refreshEngineering} />}
-              {view === "usage" && <UsageView api={api} language={language} />}
+              {view === "bench" && <Suspense fallback={<ViewLoading />}><BenchView {...shared} /></Suspense>}
+              {view === "wiring" && <Suspense fallback={<ViewLoading />}><WiringView {...shared} /></Suspense>}
+              {view === "motor" && <Suspense fallback={<ViewLoading />}><MotorView {...shared} /></Suspense>}
+              {view === "flight" && <Suspense fallback={<ViewLoading />}><FlightView {...shared} /></Suspense>}
+              {view === "history" && <Suspense fallback={<ViewLoading />}><HistoryView {...shared} runs={runs} selectedRun={selectedRun} setSelectedRun={setSelectedRun} refresh={refreshEngineering} /></Suspense>}
+              {view === "usage" && <Suspense fallback={<ViewLoading />}><UsageView api={api} language={language} /></Suspense>}
               {view === "agent" && (
                 <div className="agent-workspace">
                   {!selectedSession ? <section className="empty-workbench"><Robot size={28} /><h1>{t("selectSession")}</h1><button className="button primary" onClick={() => setNewTaskOpen(true)}><Plus size={17} />{t("newTask")}</button></section> : <>

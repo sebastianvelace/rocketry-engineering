@@ -153,6 +153,20 @@ can be refreshed manually:
 Raw Claude usage prose and Codex reset-credit identifiers are not exposed to
 the React client.
 
+### Bundle size
+
+`BenchView`, `WiringView`, `MotorView`, `FlightView`, `HistoryView` and
+`UsageView` are lazy-loaded (`React.lazy` + `Suspense`, following the
+existing `MessageContent` pattern) instead of shipped in the main chunk —
+none of them are needed for the default Agent view. Confirmed the
+`@phosphor-icons/react` barrel import was not the bloat source first
+(`sideEffects: false` in its `package.json`, so unused icons were already
+tree-shaken); the remaining ~490 KB main chunk is dominated by React,
+`motion/react` and uPlot (`RunPlot`, needed eagerly since the Agent view's
+result dock defaults to its "runs" tab). Main chunk: 522 KB → 492 KB
+minified; `EngineeringViews` (26 KB) and `UsageView` (6 KB) now load only
+when the operator first navigates there.
+
 ## Visual system
 
 The interface is treated as an engineering instrument:

@@ -559,6 +559,7 @@ option {
   background: rgba(8, 12, 17, .72);
 }
 .engineering-view > * { width: min(1220px, 100%); margin-right: auto; margin-left: auto; }
+.view-loading { height: 100%; }
 .section-head { display: flex; min-height: 148px; gap: 30px; align-items: flex-start; justify-content: space-between; border-bottom: 1px solid var(--line); }
 .section-head > div:first-child > span { color: var(--accent); font-family: "Geist Mono Variable", monospace; font-size: 9px; font-weight: 650; letter-spacing: .13em; }
 .section-head h1 { margin: 9px 0 8px; font-size: clamp(38px, 5vw, 66px); font-weight: 590; line-height: .95; letter-spacing: -.055em; }
