@@ -141,9 +141,7 @@ turns verified the installed Claude Code and Codex subscription transports.
 3. **Long-session rendering:** Markdown is memoized, but the conversation feed
    is not virtualized. Add windowing once sessions routinely exceed a few
    hundred messages or tool events.
-4. **Frontend boundaries:** `App.tsx` still owns transport lifecycle, session
-   state, composer behavior and layout. Extract session transport and
-   conversation hooks before adding more provider-specific controls.
+4. **Frontend boundaries:** done 2026-07-24. See the follow-up below.
 5. **Session management:** deletion with provider shutdown and cascading data
    cleanup is implemented. Archive and a clear indication when a provider
    session is already active in another workstation process remain pending.
@@ -152,3 +150,33 @@ turns verified the installed Claude Code and Codex subscription transports.
 7. **Remote continuity:** conversation access from another computer still
    needs an authenticated relay or synchronized transcript store; the local
    gateway must not simply bind to the LAN.
+
+### Frontend boundary extraction follow-up (2026-07-24)
+
+Item 4 above is done. `App.tsx` (868 lines) now composes five focused,
+independently testable modules instead of owning every concern directly:
+`hooks/useGatewayWorkspace` (gateway connection boot/retry, sessions,
+engineering status/runs/artifacts refresh, session and worktree CRUD),
+`hooks/useSessionTransport` (per-session WebSocket event and approval
+streaming, warm-connect, auto-reconnect), `hooks/useComposer` (composer
+text, slash-command matching, model selection, message send/steer
+dispatch), and `hooks/useResizableRail` / `hooks/usePersistedState` for
+layout and localStorage-backed preferences. `App.tsx` dropped to 581 lines
+and now owns JSX composition, dialog-open UI state and the small set of
+callbacks that wire the hooks together — matching the boundary the original
+audit asked for.
+
+Verification: `tsc -b` type-checks clean, the 26 Vitest unit tests and all
+13 Playwright `workstation.e2e.ts` scenarios pass unchanged against the
+deterministic mock gateway (session creation, Codex steering, worktree
+review/merge/delete, AskUserQuestion, Bench timeout reporting, usage view),
+and the three `visual.e2e.ts` pixel baselines at 900/1280/1440px are
+byte-for-byte unchanged. This was a state/effect ownership refactor, not a
+UX or markup change — no test assertions were touched to make it pass.
+
+Four commits landed the same day as this follow-up (`Console: expose
+conversation delete action`, `feat(workstation): steer Codex turns and
+follow agent runs`, `feat(workstation): deepen engineering result views`,
+`feat(workstation): complete Codex interaction parity`) that are not yet
+covered by either the original audit or this follow-up. They should get a
+dedicated pass before being considered audited.
