@@ -68,8 +68,10 @@ network-sensitive commands and sandbox escapes still require approval.
 On Linux, Claude's Bash sandbox is enabled automatically only when both
 `bubblewrap` and `socat` are installed. If either dependency is missing, the
 adapter does not pretend the sandbox is active and falls back to the narrow
-allowlist plus interactive approval. "Allow for session" rewrites the SDK's
-suggested permission destination to the current session; it no longer silently
+allowlist plus interactive approval. Both dependencies are present on this
+workstation as of 2026-07-23 and the sandbox is confirmed active (see
+"Acceptance" below). "Allow for session" rewrites the SDK's suggested
+permission destination to the current session; it no longer silently
 writes a permanent project-local rule.
 
 The composer uses a small provider-aware router. `/model`, `/usage`, `/status`,
@@ -414,9 +416,12 @@ There is no duplicate simulation implementation in React.
   injected first-request `503`.
 - A real Claude turn ran the previously prompt-triggering
   `eza -la console | head -5` inspection with zero approval callbacks under
-  the narrow allowlist. This workstation currently has `bubblewrap` but not
-  `socat`, so full Claude Bash sandboxing remains disabled until that system
-  dependency is installed.
+  the narrow allowlist.
+- `socat` was installed alongside the already-present `bubblewrap`, and a
+  follow-up live turn confirmed `sandbox_enabled` is now `True` and a Bash
+  call runs through the real bubblewrap sandbox (`autoAllowBashIfSandboxed`)
+  with zero `can_use_tool` callbacks — not just the narrow allowlist. Full
+  Claude Bash sandboxing is active on this workstation.
 - A one-geometry openMotor E2E created run #8 with one viable `67F133`
   configuration and 66.54 N·s simulated impulse.
 - An OpenRocket E2E created run #9 with 1503.33 m simulated apogee and no
