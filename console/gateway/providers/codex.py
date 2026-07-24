@@ -304,6 +304,7 @@ class CodexAdapter:
         *,
         approved: bool,
         for_session: bool = False,
+        answers: dict[str, str] | None = None,
     ) -> None:
         request = self._approval_requests.pop(request_id, None)
         if request is None:

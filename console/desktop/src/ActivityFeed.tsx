@@ -253,6 +253,91 @@ function PlanCard({ item }: { item: Extract<TimelineItem, { kind: "plan" }> }) {
   );
 }
 
+export interface AskUserQuestionOption {
+  label: string;
+  description?: string;
+}
+
+export interface AskUserQuestionItem {
+  question: string;
+  header?: string;
+  multiSelect?: boolean;
+  options: AskUserQuestionOption[];
+}
+
+export function AskUserQuestionPanel({
+  questions,
+  language,
+  onSubmit,
+  onDeny,
+}: {
+  questions: AskUserQuestionItem[];
+  language: Language;
+  onSubmit: (answers: Record<string, string>) => void;
+  onDeny: () => void;
+}) {
+  const [selected, setSelected] = useState<Record<string, string[]>>({});
+
+  function toggle(question: string, label: string, multiSelect: boolean) {
+    setSelected((current) => {
+      const chosen = current[question] || [];
+      if (multiSelect) {
+        return {
+          ...current,
+          [question]: chosen.includes(label) ? chosen.filter((value) => value !== label) : [...chosen, label],
+        };
+      }
+      return { ...current, [question]: [label] };
+    });
+  }
+
+  const answered = questions.every((entry) => (selected[entry.question] || []).length > 0);
+
+  return (
+    <section className="approval-panel ask-user-question">
+      <div><strong>{language === "es" ? "El agente necesita una respuesta" : "The agent needs an answer"}</strong></div>
+      {questions.map((entry) => (
+        <fieldset key={entry.question}>
+          <legend>{entry.header || entry.question}</legend>
+          <p>{entry.question}</p>
+          <div className="ask-user-question-options">
+            {entry.options.map((option) => {
+              const checked = (selected[entry.question] || []).includes(option.label);
+              return (
+                <label className={checked ? "active" : ""} key={option.label}>
+                  <input
+                    type={entry.multiSelect ? "checkbox" : "radio"}
+                    name={entry.question}
+                    checked={checked}
+                    onChange={() => toggle(entry.question, option.label, Boolean(entry.multiSelect))}
+                  />
+                  <span><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+      ))}
+      <div>
+        <button onClick={onDeny}>{language === "es" ? "Cancelar" : "Cancel"}</button>
+        <button
+          className="primary"
+          disabled={!answered}
+          onClick={() =>
+            onSubmit(
+              Object.fromEntries(
+                questions.map((entry) => [entry.question, (selected[entry.question] || []).join(", ")]),
+              ),
+            )
+          }
+        >
+          {language === "es" ? "Responder" : "Answer"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export function Timeline({ items, provider, language }: { items: TimelineItem[]; provider: string; language: Language }) {
   return (
     <>

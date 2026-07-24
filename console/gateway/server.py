@@ -290,10 +290,17 @@ def create_app(
             payload = await request.json()
             if not isinstance(payload.get("approved"), bool):
                 raise ValueError("approved must be a boolean.")
+            answers = payload.get("answers")
+            if answers is not None and (
+                not isinstance(answers, dict)
+                or not all(isinstance(key, str) and isinstance(value, str) for key, value in answers.items())
+            ):
+                raise ValueError("answers must be a flat object of string keys and values.")
             approval = await session_manager.resolve_approval(
                 request.path_params["approval_id"],
                 approved=payload["approved"],
                 for_session=bool(payload.get("for_session", False)),
+                answers=answers,
             )
             return JSONResponse(
                 {"ok": True, "approval": gateway_store.serialize(approval)}

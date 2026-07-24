@@ -24,7 +24,7 @@ import {
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GatewayApi, connectGateway } from "./api";
-import { buildTimeline, Timeline } from "./ActivityFeed";
+import { AskUserQuestionItem, AskUserQuestionPanel, buildTimeline, Timeline } from "./ActivityFeed";
 import {
   BenchView,
   FlightView,
@@ -314,9 +314,9 @@ export default function App() {
     } finally { setBusy(false); }
   }
 
-  async function resolveApproval(approval: Approval, approved: boolean, forSession = false) {
+  async function resolveApproval(approval: Approval, approved: boolean, forSession = false, answers?: Record<string, string>) {
     if (!api) return;
-    await api.resolveApproval(approval.id, approved, forSession);
+    await api.resolveApproval(approval.id, approved, forSession, answers);
     setApprovals(await api.approvals(approval.session_id));
   }
 
@@ -536,7 +536,17 @@ export default function App() {
                       <div className="message-feed">
                         {!timeline.length && <div className="agent-intro"><span>R/ AGENT HARNESS</span><h2>{t("noConversation")}</h2><p>{language === "es" ? "Puedes pedir una prueba en lenguaje natural o escribir / para usar un comando del proveedor." : "Ask for a test in natural language or type / to use a provider command."}</p></div>}
                         <Timeline items={timeline} provider={selectedSession.provider} language={language} />
-                        {approvals.map((approval) => <section className="approval-panel" key={approval.id}><div><strong>{t("needsApproval")}</strong><span>{approval.action}</span></div><pre>{compactDetail(approval.details)}</pre><div><button onClick={() => void resolveApproval(approval, false)}><X />{t("deny")}</button><button onClick={() => void resolveApproval(approval, true)}><Check />{t("approve")}</button><button className="primary" onClick={() => void resolveApproval(approval, true, true)}>{t("approveSession")}</button></div></section>)}
+                        {approvals.map((approval) => approval.details.kind === "ask_user_question" ? (
+                          <AskUserQuestionPanel
+                            key={approval.id}
+                            questions={approval.details.questions as AskUserQuestionItem[]}
+                            language={language}
+                            onDeny={() => void resolveApproval(approval, false)}
+                            onSubmit={(answers) => void resolveApproval(approval, true, false, answers)}
+                          />
+                        ) : (
+                          <section className="approval-panel" key={approval.id}><div><strong>{t("needsApproval")}</strong><span>{approval.action}</span></div><pre>{compactDetail(approval.details)}</pre><div><button onClick={() => void resolveApproval(approval, false)}><X />{t("deny")}</button><button onClick={() => void resolveApproval(approval, true)}><Check />{t("approve")}</button><button className="primary" onClick={() => void resolveApproval(approval, true, true)}>{t("approveSession")}</button></div></section>
+                        ))}
                         <div ref={feedEnd} />
                       </div>
                       <form className="composer" onSubmit={sendMessage}>

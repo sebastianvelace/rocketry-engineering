@@ -380,6 +380,50 @@ class ProviderNormalizationTests(unittest.TestCase):
         self.assertIsInstance(result, PermissionResultAllow)
         self.assertEqual(result.updated_input, {"command": "git fetch"})
 
+    def test_claude_tags_ask_user_question_and_returns_selected_answers(self):
+        async def exercise():
+            approvals = []
+            adapter = None
+
+            async def emit(event):
+                pass
+
+            async def approve(request):
+                approvals.append(request)
+                await adapter.resolve_approval(
+                    request.request_id,
+                    approved=True,
+                    for_session=False,
+                    answers={"Which motor?": "F-class"},
+                )
+
+            adapter = ClaudeAdapter(
+                workspace=Path("/tmp"),
+                event_sink=emit,
+                approval_sink=approve,
+            )
+            result = await adapter._request_permission(
+                "AskUserQuestion",
+                {
+                    "questions": [
+                        {
+                            "question": "Which motor?",
+                            "header": "Motor",
+                            "options": [{"label": "F-class", "description": ""}],
+                            "multiSelect": False,
+                        }
+                    ]
+                },
+                ToolPermissionContext(tool_use_id="tool-1"),
+            )
+            return approvals, result
+
+        approvals, result = asyncio.run(exercise())
+        self.assertEqual(approvals[0].details["kind"], "ask_user_question")
+        self.assertEqual(len(approvals[0].details["questions"]), 1)
+        self.assertIsInstance(result, PermissionResultAllow)
+        self.assertEqual(result.updated_input["answers"], {"Which motor?": "F-class"})
+
     def test_claude_uses_sandboxed_low_prompt_mode_and_session_scoped_approval(self):
         async def exercise():
             adapter = None

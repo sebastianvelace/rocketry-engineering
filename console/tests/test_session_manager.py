@@ -36,8 +36,8 @@ class FakeAdapter:
     async def interrupt(self):
         self.interrupted = True
 
-    async def resolve_approval(self, request_id, *, approved, for_session):
-        self.approvals.append((request_id, approved, for_session))
+    async def resolve_approval(self, request_id, *, approved, for_session, answers=None):
+        self.approvals.append((request_id, approved, for_session, answers))
 
     async def close(self):
         self.closed = True
@@ -134,7 +134,7 @@ class SessionManagerTests(unittest.TestCase):
 
         session_id, resolved = asyncio.run(exercise())
         self.assertEqual(resolved.status, "approved")
-        self.assertEqual(self.adapters[0].approvals, [(81, True, True)])
+        self.assertEqual(self.adapters[0].approvals, [(81, True, True, None)])
         self.assertEqual(self.store.get_session(session_id).status, "running")
 
     def test_interrupt_updates_provider_and_durable_status(self):

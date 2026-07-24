@@ -69,10 +69,15 @@ const events = [
   },
 ];
 
-async function mockGateway(page: Page, sessionEvents: typeof events = events) {
+async function mockGateway(
+  page: Page,
+  sessionEvents: typeof events = events,
+  sessionApprovals: Record<string, unknown>[] = [],
+) {
   let selectedModel = "default";
   let sessionLoads = 0;
   let sessionDeleted = false;
+  let lastResolvedApproval: Record<string, unknown> | null = null;
   await page.routeWebSocket("ws://gateway.test/**", () => {});
   await page.route("http://gateway.test/**", async (route) => {
     const request = route.request();
@@ -156,7 +161,10 @@ async function mockGateway(page: Page, sessionEvents: typeof events = events) {
     } else if (path === "/api/sessions/session-1/events") {
       payload = { ok: true, events: sessionEvents };
     } else if (path === "/api/sessions/session-1/approvals") {
-      payload = { ok: true, approvals: [] };
+      payload = { ok: true, approvals: lastResolvedApproval ? [] : sessionApprovals };
+    } else if (path.startsWith("/api/approvals/") && method === "POST") {
+      lastResolvedApproval = request.postDataJSON();
+      payload = { ok: true, approval: { id: path.split("/").pop(), status: "approved" } };
     } else if (path === "/api/sessions/session-1/model" && method === "POST") {
       selectedModel = String(request.postDataJSON().model);
       payload = { ok: true, session: { ...baseSession, metadata: { model: selectedModel } } };
@@ -303,6 +311,43 @@ test("thinking, tool calls, subagents and plan updates render inline in the conv
   await expect(tool.locator(".timeline-tool-body")).toContainText("12 passed");
 
   await expect(feed.locator(".message.assistant").last()).toContainText("Fixed the flaky test.");
+});
+
+test("AskUserQuestion renders a structured picker instead of raw JSON", async ({ page }) => {
+  const askUserQuestionApproval = {
+    id: "approval-1",
+    session_id: "session-1",
+    status: "pending",
+    action: "AskUserQuestion",
+    details: {
+      kind: "ask_user_question",
+      questions: [
+        {
+          question: "Which motor should the sweep target?",
+          header: "Motor",
+          multiSelect: false,
+          options: [
+            { label: "F-class", description: "25.4mm minimum diameter" },
+            { label: "G-class", description: "" },
+          ],
+        },
+      ],
+    },
+  };
+  await mockGateway(page, [events[0], events[1]], [askUserQuestionApproval]);
+  await page.goto("/");
+
+  const panel = page.locator(".ask-user-question");
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("Which motor should the sweep target?");
+  const answerButton = panel.getByRole("button", { name: "Responder" });
+  await expect(answerButton).toBeDisabled();
+
+  await panel.getByText("F-class").click();
+  await expect(answerButton).toBeEnabled();
+  await answerButton.click();
+
+  await expect(panel).not.toBeVisible();
 });
 
 test("conversation deletion requires confirmation and clears the selected session", async ({ page }) => {

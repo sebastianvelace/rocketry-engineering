@@ -391,6 +391,9 @@ class ClaudeAdapter:
             "decision_reason": context.decision_reason,
             "blocked_path": context.blocked_path,
         }
+        if tool_name == "AskUserQuestion" and isinstance(input_data.get("questions"), list):
+            details["kind"] = "ask_user_question"
+            details["questions"] = input_data["questions"]
         try:
             await self.approval_sink(
                 ProviderApproval(
@@ -474,6 +477,7 @@ class ClaudeAdapter:
         *,
         approved: bool,
         for_session: bool,
+        answers: dict[str, str] | None = None,
     ) -> None:
         pending = self._pending_permissions.get(str(request_id))
         if pending is None:
@@ -490,9 +494,13 @@ class ClaudeAdapter:
                 if for_session
                 else None
             )
+            # AskUserQuestion has no separate execution step: the selected
+            # answers are delivered as the tool's updated_input, mirroring
+            # this tool's own {questions, answers} contract.
+            updated_input = {**input_data, "answers": answers} if answers else input_data
             future.set_result(
                 PermissionResultAllow(
-                    updated_input=input_data,
+                    updated_input=updated_input,
                     updated_permissions=session_permissions,
                 )
             )

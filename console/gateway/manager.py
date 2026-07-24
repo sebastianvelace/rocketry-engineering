@@ -437,6 +437,7 @@ class SessionManager:
         *,
         approved: bool,
         for_session: bool = False,
+        answers: dict[str, str] | None = None,
     ):
         current = self.store.get_approval(approval_id)
         resolution = self.store.resolve_approval(
@@ -455,6 +456,7 @@ class SessionManager:
                     provider_request_id,
                     approved=approved,
                     for_session=for_session,
+                    answers=answers,
                 )
             self.store.update_session(
                 current.session_id,

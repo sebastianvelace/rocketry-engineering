@@ -138,10 +138,11 @@ export class GatewayApi {
     approvalId: string,
     approved: boolean,
     forSession = false,
+    answers?: Record<string, string>,
   ): Promise<void> {
     await this.request(`/api/approvals/${approvalId}`, {
       method: "POST",
-      body: JSON.stringify({ approved, for_session: forSession }),
+      body: JSON.stringify({ approved, for_session: forSession, answers }),
     });
   }
 

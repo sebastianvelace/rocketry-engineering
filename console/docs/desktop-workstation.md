@@ -193,9 +193,44 @@ every new message/payload shape, a frontend unit test
 Playwright scenario (`desktop/e2e/workstation.e2e.ts`) asserting thinking,
 a tool call, a subagent and a plan update all render inline in the
 conversation. Not yet exercised against a live Claude or Codex turn — the
-exact `AskUserQuestion` input shape and Codex `fileChange` diff field
-(needed for the next two phases) still need that live confirmation before
-their parsers are considered final.
+Codex `fileChange` diff field (needed for the next phase) still needs that
+live confirmation before its parser is considered final.
+
+### Structured `AskUserQuestion` (Claude)
+
+`AskUserQuestion` previously flowed through the generic tool-approval panel
+as raw JSON with only approve/deny — there was no way to actually pick an
+answer. The Agent SDK has no dedicated control-protocol subtype for this
+tool (confirmed by inspecting `claude_agent_sdk/types.py`'s
+`SDKControlRequest` subtypes: only `interrupt`, `can_use_tool`,
+`initialize`, `set_permission_mode`, `hook_callback`, `mcp_message`,
+`rewind_files`, `mcp_reconnect`, `mcp_toggle`, `stop_task`), so it must run
+through the same `can_use_tool` permission callback this gateway already
+implements — the selected answers are delivered back as the tool's
+`updated_input`, the same mechanism `can_use_tool` already uses to modify
+any tool call's arguments before it runs.
+
+`gateway/providers/claude.py`'s `_request_permission` now tags
+`ProviderApproval.details` with `kind: "ask_user_question"` and the parsed
+`questions` array when the tool name matches. `resolve_approval` across
+`claude.py`, `manager.py` and `server.py`'s `/api/approvals/{id}` route now
+accepts an optional `answers` object, merged into the permission result's
+`updated_input` as `{questions: [...], answers: {...}}`. The desktop client
+(`ActivityFeed.tsx`'s `AskUserQuestionPanel`) renders an actual
+radio/checkbox picker per question instead of raw JSON.
+
+Codex's app-server protocol (`CODEX_COMMANDS`, `normalize_codex`) has no
+equivalent method locally, so this is Claude-only for now — Codex keeps the
+existing generic approval flow.
+
+**Verification gap, stated plainly**: this is verified by adapter and E2E
+tests against the assumed schema, not against a real `AskUserQuestion` call.
+Before trusting it in daily use, trigger one for real and confirm the
+`input_data` shape and that `updated_input` is actually consumed as the
+tool's result rather than the CLI expecting a different interactive path —
+per this project's own measure-before-you-trust discipline, this is
+exactly the kind of assumption that needs a real measurement, not a second
+inference.
 
 ## Workspace and model scope
 
