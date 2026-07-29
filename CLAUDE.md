@@ -55,7 +55,7 @@ measurement**, not a conclusion.
 
 A ground-up experimental rocketry project spanning internal-ballistics
 simulation, airframe optimization, propellant characterization, a custom
-data-acquisition system, and an upstream contribution to OpenRocket. See
+data-acquisition system, and two upstream contributions to OpenRocket. See
 [README.md](README.md) for the full overview and results.
 
 Current stage of the engineering arc **measure → estimate → control**: the
@@ -70,7 +70,7 @@ simulation/internal-ballistics/   Python sweeps over openMotor's motorlib
 simulation/flight/                OpenRocket driven headless via JPype
 avionics/daq-fase1/               ESP32 firmware + Python capture/analysis
 images/                           result figures
-docs/                             engineering write-ups (01–05)
+docs/                             engineering write-ups (01–06)
 ```
 
 ---

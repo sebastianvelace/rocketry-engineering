@@ -2,8 +2,8 @@
 
 A ground-up experimental rocketry project: from internal-ballistics simulation
 and airframe optimization, through propellant characterization and a static
-test, to a custom data-acquisition system — plus a merged-track contribution to
-the OpenRocket open-source flight simulator.
+test, to a custom data-acquisition system — plus two upstream bug fixes submitted
+to the OpenRocket open-source flight simulator.
 
 **Author:** Sebastián Velandia · Electronic Engineering
 **Status:** ongoing · **Focus:** instrumentation, simulation, flight dynamics
@@ -32,7 +32,7 @@ change one variable at a time.**
 | **Key safety finding** | A Kn in the "safe" 200–280 range is **not** sufficient — 120 Kn-valid configurations all violated port/throat or mass-flux limits. All four limits must hold simultaneously |
 | **Airframe** | The aluminium motor tube *is* the airframe (true minimum diameter). Optimized in OpenRocket: **+64 % apogee** from fin-profile and finish alone — the nose shape was irrelevant at Mach 0.77 |
 | **Avionics** | Custom ESP32 data-acquisition system: live Nyquist/aliasing demonstration, frequency-domain (FFT) analysis, and interrupt-driven sampling (**0 µs jitter vs. 233 µs**), ADC calibration (159→38 mV), and a full pipeline dry-run recovering a known **72.7 N·s impulse to within 3.7 %** |
-| **Open source** | Diagnosed, fixed, validated and submitted a bug fix to [OpenRocket](https://github.com/openrocket/openrocket) ([issue #3183](https://github.com/openrocket/openrocket/issues/3183), PR #3186) |
+| **Open source** | Two bugs diagnosed, fixed and submitted to [OpenRocket](https://github.com/openrocket/openrocket): a stable rocket aborting as if tumbling ([#3183](https://github.com/openrocket/openrocket/issues/3183) → [PR #3190](https://github.com/openrocket/openrocket/pull/3190)) and the simulation seed never reaching the wind models, making every turbulent run irreproducible ([#3188](https://github.com/openrocket/openrocket/issues/3188) → [PR #3189](https://github.com/openrocket/openrocket/pull/3189)) |
 
 ---
 
@@ -44,7 +44,7 @@ change one variable at a time.**
 | [02 · Flight Simulation](docs/02-flight-simulation.md) | OpenRocket airframe study, the +64 % optimization, stability, wind |
 | [03 · Propellant & Static Test](docs/03-propellant-and-test.md) | Characterization methodology and the static-test post-mortem (engineering-level) |
 | [04 · Avionics DAQ](docs/04-avionics-daq.md) | ESP32 sampling system, Nyquist/aliasing demonstration, results |
-| [05 · Open-Source Contribution](docs/05-open-source.md) | The OpenRocket tumble-abort bug: diagnosis → fix → statistical validation |
+| [05 · Open-Source Contribution](docs/05-open-source.md) | Two OpenRocket bugs: the spurious tumble abort and the unseeded wind model — diagnosis → fix → deterministic validation |
 | [06 · BIRST 2026](docs/06-birst-2026.md) | International OpenRocket simulation tournament: rules, timeline, scoring, and where this project's upstream work bears on it |
 
 ## Repository layout
