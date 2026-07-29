@@ -8,9 +8,14 @@ independent upstream contributions.
 
 | | Upstream | Status |
 |---|---|---|
-| Spurious tumble abort | [issue #3183](https://github.com/openrocket/openrocket/issues/3183) → [PR #3190](https://github.com/openrocket/openrocket/pull/3190) | open |
-| Random seed never reached the wind models | [issue #3188](https://github.com/openrocket/openrocket/issues/3188) → [PR #3189](https://github.com/openrocket/openrocket/pull/3189) | open |
+| Random seed never reached the wind models | [issue #3188](https://github.com/openrocket/openrocket/issues/3188) → [PR #3189](https://github.com/openrocket/openrocket/pull/3189) | **merged** 29 Jul 2026 (`9d59e430`) |
+| Spurious tumble abort | [issue #3183](https://github.com/openrocket/openrocket/issues/3183) → [PR #3190](https://github.com/openrocket/openrocket/pull/3190) | open, under review |
 | First attempt at #3183 | [PR #3186](https://github.com/openrocket/openrocket/pull/3186) | superseded — see below |
+
+The seed fix is now in OpenRocket's `unstable` branch. It also produced a
+maintainer-opened follow-up, [#3191](https://github.com/openrocket/openrocket/issues/3191)
+— exposing the seed in the UI so users can fix it for parameter sweeps, which the
+fix makes meaningful for the first time.
 
 Reproduction file: [`simulation/flight/tumble_abort_repro.ork`](../simulation/flight/tumble_abort_repro.ork)
 

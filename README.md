@@ -2,8 +2,8 @@
 
 A ground-up experimental rocketry project: from internal-ballistics simulation
 and airframe optimization, through propellant characterization and a static
-test, to a custom data-acquisition system — plus two upstream bug fixes submitted
-to the OpenRocket open-source flight simulator.
+test, to a custom data-acquisition system — plus a merged upstream bug fix to the
+OpenRocket open-source flight simulator, and a second under review.
 
 **Author:** Sebastián Velandia · Electronic Engineering
 **Status:** ongoing · **Focus:** instrumentation, simulation, flight dynamics
@@ -32,7 +32,7 @@ change one variable at a time.**
 | **Key safety finding** | A Kn in the "safe" 200–280 range is **not** sufficient — 120 Kn-valid configurations all violated port/throat or mass-flux limits. All four limits must hold simultaneously |
 | **Airframe** | The aluminium motor tube *is* the airframe (true minimum diameter). Optimized in OpenRocket: **+64 % apogee** from fin-profile and finish alone — the nose shape was irrelevant at Mach 0.77 |
 | **Avionics** | Custom ESP32 data-acquisition system: live Nyquist/aliasing demonstration, frequency-domain (FFT) analysis, and interrupt-driven sampling (**0 µs jitter vs. 233 µs**), ADC calibration (159→38 mV), and a full pipeline dry-run recovering a known **72.7 N·s impulse to within 3.7 %** |
-| **Open source** | Two bugs diagnosed, fixed and submitted to [OpenRocket](https://github.com/openrocket/openrocket): a stable rocket aborting as if tumbling ([#3183](https://github.com/openrocket/openrocket/issues/3183) → [PR #3190](https://github.com/openrocket/openrocket/pull/3190)) and the simulation seed never reaching the wind models, making every turbulent run irreproducible ([#3188](https://github.com/openrocket/openrocket/issues/3188) → [PR #3189](https://github.com/openrocket/openrocket/pull/3189)) |
+| **Open source** | The simulation seed never reached OpenRocket's wind models, so every turbulent run was irreproducible — diagnosed, fixed, and **[merged upstream](https://github.com/openrocket/openrocket/pull/3189)** ([#3188](https://github.com/openrocket/openrocket/issues/3188)). A second fix, for a stable rocket aborting as if tumbling, is under review ([#3183](https://github.com/openrocket/openrocket/issues/3183) → [PR #3190](https://github.com/openrocket/openrocket/pull/3190)) |
 
 ---
 
