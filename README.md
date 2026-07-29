@@ -45,6 +45,7 @@ change one variable at a time.**
 | [03 · Propellant & Static Test](docs/03-propellant-and-test.md) | Characterization methodology and the static-test post-mortem (engineering-level) |
 | [04 · Avionics DAQ](docs/04-avionics-daq.md) | ESP32 sampling system, Nyquist/aliasing demonstration, results |
 | [05 · Open-Source Contribution](docs/05-open-source.md) | The OpenRocket tumble-abort bug: diagnosis → fix → statistical validation |
+| [06 · BIRST 2026](docs/06-birst-2026.md) | International OpenRocket simulation tournament: rules, timeline, scoring, and where this project's upstream work bears on it |
 
 ## Repository layout
 
