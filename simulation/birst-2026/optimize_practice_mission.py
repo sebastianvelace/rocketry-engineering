@@ -32,6 +32,21 @@ TARGET_ALTITUDE_M = 300.0
 MAX_LAUNCH_MASS_KG = 1.5
 MIN_PAYLOAD_G = 60.0
 
+# Name prefix of the simulation carrying the mission's fixed launch conditions.
+MISSION_SIMULATION_PREFIX = "FINAL"
+
+# The canopy is not scenery: at the inherited 1.5 m it weighed 127 g of a 148 g
+# structure, so its diameter is the single largest lever on payload mass.  Cd is
+# a property of the canopy type rather than a free parameter, so it stays fixed.
+PARACHUTE_CD = 1.34
+PARACHUTE_DIAMETER_MIN_M = 0.70
+PARACHUTE_DIAMETER_MAX_M = 1.60
+
+# The mission caps ground contact at 6.0 m/s.  Aim below it so the candidate is
+# not balanced on the constraint wall.
+MAX_DESCENT_M_S = 6.0
+TARGET_DESCENT_M_S = 5.7
+
 
 def openrocket_jar():
     path = Path(os.environ.get("OPENROCKET_JAR", DEFAULT_OPENROCKET_JAR)).expanduser()
@@ -184,7 +199,7 @@ class Optimizer:
         self.fins = component_by_type(self.rocket, "TrapezoidFinSet")
         self.parachute = component_by_type(self.rocket, "Parachute")
         self.payload = component_by_type(self.rocket, "MassComponent")
-        self.simulation = document.getSimulation(7)
+        self.simulation = self.select_simulation(document)
         self.fcid = self.simulation.getFlightConfigurationId()
         self.motor_configuration = self.mount.getMotorConfig(self.fcid)
 
@@ -202,8 +217,14 @@ class Optimizer:
         self.mount.setAxialOffset(0.0)
         self.payload.setAxialMethod(AxialMethod.TOP)
         self.parachute.setAxialMethod(AxialMethod.TOP)
-        self.parachute.setDiameter(1.5)
-        self.parachute.setCD(1.34)
+        self.parachute.setCD(PARACHUTE_CD)
+        # The inherited file force-overrode the canopy mass to 141.75 g, a figure
+        # carried over from a 0.91 m SkyAngle preset and applied unchanged to a
+        # 1.5 m canopy.  Dropping the override lets OpenRocket derive the mass
+        # from the material and the diameter, which at 1.5 m is 127.0 g, and
+        # makes the diameter a meaningful variable instead of a fixed cost.
+        self.parachute.setMassOverridden(False)
+        self.parachute.setDiameter(PARACHUTE_DIAMETER_MAX_M)
 
         self.zero_nonpayload_mass = zero_nonpayload_mass
         if zero_nonpayload_mass:
@@ -222,6 +243,32 @@ class Optimizer:
             "parabolic": Transition.Shape.PARABOLIC,
             "haack": Transition.Shape.HAACK,
         }
+
+    @staticmethod
+    def select_simulation(document):
+        """Pick the mission simulation by name, not by position.
+
+        The previous code took ``document.getSimulation(7)``, an index that was
+        only valid because the base file happened to carry eight simulations.
+        Renaming or reordering them would have silently optimised the wrong
+        flight, so resolve it by name and fail loudly when it is missing.
+        """
+        count = document.getSimulationCount()
+        names = []
+        for index in range(count):
+            simulation = document.getSimulation(index)
+            name = str(simulation.getName())
+            names.append(name)
+            if name.startswith(MISSION_SIMULATION_PREFIX):
+                return simulation
+        if count:
+            # Fall back to the last simulation, which is where the mission run
+            # was appended in the inherited document.
+            return document.getSimulation(count - 1)
+        raise RuntimeError(
+            f"No simulation found. Expected one named "
+            f"'{MISSION_SIMULATION_PREFIX}...', saw: {names}"
+        )
 
     def random_geometry(self, motor):
         minimum_radius = max(0.0132, motor["diameter_m"] / 2.0 + 0.0011)
@@ -244,6 +291,9 @@ class Optimizer:
             "fin_span_m": (2.0 * radius) * self.random.uniform(0.22, 1.35),
             "payload_offset_m": body_length * self.random.uniform(0.0, 0.22),
             "parachute_offset_m": body_length * self.random.uniform(0.0, 0.48),
+            "parachute_diameter_m": self.random.uniform(
+                PARACHUTE_DIAMETER_MIN_M, PARACHUTE_DIAMETER_MAX_M
+            ),
         }
 
     def perturb_geometry(self, source, scale=0.12):
@@ -284,6 +334,11 @@ class Optimizer:
                 body_length * 0.70,
                 max(0.0, source["parachute_offset_m"] + self.random.gauss(0, 0.025)),
             ),
+            "parachute_diameter_m": perturbed(
+                "parachute_diameter_m",
+                PARACHUTE_DIAMETER_MIN_M,
+                PARACHUTE_DIAMETER_MAX_M,
+            ),
         }
 
     def apply_geometry(self, geometry):
@@ -316,6 +371,9 @@ class Optimizer:
         )
         self.payload.setAxialOffset(geometry["payload_offset_m"])
         self.parachute.setAxialOffset(geometry["parachute_offset_m"])
+        self.parachute.setDiameter(
+            geometry.get("parachute_diameter_m", PARACHUTE_DIAMETER_MAX_M)
+        )
 
     def payload_capacity_g(self):
         self.payload.setComponentMass(0.0)
@@ -367,7 +425,11 @@ class Optimizer:
                 and maximum_stability <= 3.0
                 and maximum_aoa <= 15.0
                 and deployed
-                and ground_hit <= 6.0
+                # Held to TARGET_DESCENT_M_S rather than the mission's 6.0 limit.
+                # A smaller canopy is lighter and therefore always scores better,
+                # so the search will sit on whatever bound it is given; putting
+                # the bound below the real limit is what buys the margin.
+                and ground_hit <= TARGET_DESCENT_M_S
             )
             result = {
                 **geometry,
@@ -404,7 +466,7 @@ class Optimizer:
         penalty += 1200.0 * max(0.0, 1.5 - result["stability_min_cal"])
         penalty += 1000.0 * max(0.0, result["stability_max_cal"] - 3.0)
         penalty += 180.0 * max(0.0, result["max_aoa_deg"] - 15.0)
-        penalty += 400.0 * max(0.0, result["ground_hit_m_s"] - 6.0)
+        penalty += 400.0 * max(0.0, result["ground_hit_m_s"] - TARGET_DESCENT_M_S)
         if not result["recovery_deployed"]:
             penalty += 2000.0
         return result["score"] - penalty

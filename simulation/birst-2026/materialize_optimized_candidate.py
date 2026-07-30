@@ -55,8 +55,9 @@ def main():
         "fin_span_m",
         "payload_offset_m",
         "parachute_offset_m",
+        "parachute_diameter_m",
     )
-    geometry = {key: candidate[key] for key in geometry_keys}
+    geometry = {key: candidate[key] for key in geometry_keys if key in candidate}
     optimizer.apply_geometry(geometry)
 
     rocket = document.getRocket()
@@ -68,7 +69,10 @@ def main():
         "must be audited separately."
     )
     optimizer.payload.setName("Payload")
-    optimizer.parachute.setName("Custom triangular parachute 150 cm, Cd 1.34")
+    optimizer.parachute.setName(
+        f"Parachute {optimizer.parachute.getDiameter() * 100:.0f} cm, "
+        f"Cd {float(optimizer.parachute.getCD()):.2f}"
+    )
     optimizer.mount.setName("29 mm motor mount")
     optimizer.fins.setName("Optimized trapezoidal fin set")
     configuration = rocket.getFlightConfiguration(optimizer.fcid)

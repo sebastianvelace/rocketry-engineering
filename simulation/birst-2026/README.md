@@ -54,7 +54,21 @@ python3 -m venv .venv
 export OPENROCKET_JAR=/path/to/OpenRocket-24.12.jar
 ```
 
-The workflow is:
+The deliverable is **`Tars Crew 9075.ork`**, score 837.74. Rebuild it with:
+
+```sh
+.venv/bin/python simulation/birst-2026/finalize_deliverable.py
+```
+
+Audit any candidate without going through the search — this reads the flight
+data OpenRocket wrote into the file and applies the mission's own windows, so it
+shares no code path with the optimizer:
+
+```sh
+python3 simulation/birst-2026/audit_candidate.py "simulation/birst-2026/Tars Crew 9075.ork"
+```
+
+The full search workflow is:
 
 ```sh
 # Search geometry, motor and payload combinations.
