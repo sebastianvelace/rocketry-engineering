@@ -42,3 +42,34 @@ A design validated only against the patched branch can therefore behave
 differently, or abort, when the judges open it. **Produce every number that goes
 into the submission with a public release of OpenRocket.** Use the patched build
 only to understand behaviour, never to generate a result.
+
+## Reproduce the optimization
+
+The Python tools in this directory use OpenRocket 24.12 through JPype. Install
+the Python dependency and point `OPENROCKET_JAR` at the public-release JAR:
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install jpype1
+export OPENROCKET_JAR=/path/to/OpenRocket-24.12.jar
+```
+
+The workflow is:
+
+```sh
+# Search geometry, motor and payload combinations.
+.venv/bin/python simulation/birst-2026/optimize_practice_mission.py \
+  --competitive --trials 400 --refine 500
+
+# Turn a retained result into a clean OpenRocket document.
+.venv/bin/python simulation/birst-2026/materialize_optimized_candidate.py \
+  --output "simulation/birst-2026/Tars Crew 9075 - candidate.ork"
+
+# Reload the saved document and independently verify every hard constraint.
+.venv/bin/python simulation/birst-2026/verify_optimized_candidate.py \
+  "simulation/birst-2026/Tars Crew 9075 - candidate.ork"
+```
+
+`optimization-report.md` records the full 39,803-flight study, the finalist
+designs, robustness checks, the mathematical score ceiling, and the physical
+limitations that OpenRocket does not model.
